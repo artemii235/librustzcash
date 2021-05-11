@@ -198,7 +198,8 @@ impl<P: consensus::Parameters> SaplingOutput<P> {
 #[cfg(feature = "transparent-inputs")]
 struct TransparentInputInfo {
     sk: secp256k1::SecretKey,
-    pubkey: [u8; secp256k1::constants::PUBLIC_KEY_SIZE],
+    script_data: Script,
+    redeem_script: Script,
     coin: TxOut,
 }
 
@@ -224,28 +225,12 @@ struct TransparentInputs;
 
 impl TransparentInputs {
     #[cfg(feature = "transparent-inputs")]
-    fn push(&mut self, sk: secp256k1::SecretKey, coin: TxOut) -> Result<(), Error> {
+    fn push(&mut self, sk: secp256k1::SecretKey, script_data: Script, coin: TxOut) -> Result<(), Error> {
         if coin.value.is_negative() {
             return Err(Error::InvalidAmount);
         }
 
-        // Ensure that the RIPEMD-160 digest of the public key associated with the
-        // provided secret key matches that of the address to which the provided
-        // output may be spent.
-        let pubkey = secp256k1::PublicKey::from_secret_key(&self.secp, &sk).serialize();
-        match coin.script_pubkey.address() {
-            Some(TransparentAddress::PublicKey(hash)) => {
-                use ripemd160::Ripemd160;
-                use sha2::{Digest, Sha256};
-
-                if hash[..] != Ripemd160::digest(&Sha256::digest(&pubkey))[..] {
-                    return Err(Error::InvalidAddress);
-                }
-            }
-            _ => return Err(Error::InvalidAddress),
-        }
-
-        self.inputs.push(TransparentInputInfo { sk, pubkey, coin });
+        self.inputs.push(TransparentInputInfo { sk, script_data, redeem_script: coin.script_pubkey.clone(), coin });
 
         Ok(())
     }
@@ -287,8 +272,13 @@ impl TransparentInputs {
             let mut sig_bytes: Vec<u8> = sig.serialize_der()[..].to_vec();
             sig_bytes.extend(&[SIGHASH_ALL as u8]);
 
-            // P2PKH scriptSig
-            mtx.vin[i].script_sig = Script::default() << &sig_bytes[..] << &info.pubkey[..];
+            let mut script_sig = Script::default();
+            script_sig = script_sig << &sig_bytes[..];
+            if !info.script_data.0.is_empty() {
+                script_sig.append_script(&info.script_data);
+            }
+            script_sig = script_sig << &info.redeem_script.0[..];
+            mtx.vin[i].script_sig = script_sig;
         }
     }
 
@@ -547,10 +537,12 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
         &mut self,
         sk: secp256k1::SecretKey,
         utxo: OutPoint,
+        sequence: u32,
+        script_data: Script,
         coin: TxOut,
     ) -> Result<(), Error> {
-        self.transparent_inputs.push(sk, coin)?;
-        self.mtx.vin.push(TxIn::new(utxo));
+        self.transparent_inputs.push(sk, script_data, coin)?;
+        self.mtx.vin.push(TxIn::new(utxo, sequence));
         Ok(())
     }
 
@@ -627,6 +619,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
         // Change output
         //
 
+        /*
         if change.is_positive() {
             // Send change to the specified change address. If no change address
             // was set, send change to the first Sapling address given as input.
@@ -647,6 +640,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
 
             self.add_sapling_output(Some(change_address.0), change_address.1, change, None)?;
         }
+        */
 
         //
         // Record initial positions of spends and outputs
@@ -658,7 +652,6 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
             .enumerate()
             .map(|(i, o)| Some((i, o)))
             .collect();
-
         //
         // Sapling spends and outputs
         //
@@ -855,6 +848,10 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
             self.mtx.freeze().expect("Transaction should be complete"),
             tx_metadata,
         ))
+    }
+
+    pub fn set_lock_time(&mut self, lock_time: u32) {
+        self.mtx.lock_time = lock_time;
     }
 }
 

@@ -50,11 +50,11 @@ pub struct TxIn {
 impl TxIn {
     #[cfg(feature = "transparent-inputs")]
     #[cfg_attr(docsrs, doc(cfg(feature = "transparent-inputs")))]
-    pub fn new(prevout: OutPoint) -> Self {
+    pub fn new(prevout: OutPoint, sequence: u32) -> Self {
         TxIn {
             prevout,
             script_sig: Script::default(),
-            sequence: std::u32::MAX,
+            sequence,
         }
     }
 

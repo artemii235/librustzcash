@@ -30,6 +30,10 @@ enum OpCode {
 pub struct Script(pub Vec<u8>);
 
 impl Script {
+    pub fn append_script(&mut self, script: &Script) {
+        self.0.extend(script.0.iter())
+    }
+
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
         let script = Vector::read(&mut reader, |r| r.read_u8())?;
         Ok(Script(script))
