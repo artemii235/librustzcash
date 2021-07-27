@@ -564,6 +564,14 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
         Ok(())
     }
 
+    /// Adds a TxOut
+    pub fn add_tx_out(
+        &mut self,
+        out: TxOut,
+    ) {
+        self.mtx.vout.push(out);
+    }
+
     /// Sets the Sapling address to which any change will be sent.
     ///
     /// By default, change is sent to the Sapling address corresponding to the first note
