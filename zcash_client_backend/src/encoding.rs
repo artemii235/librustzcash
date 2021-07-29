@@ -11,7 +11,7 @@ use std::convert::TryInto;
 use std::io::{self, Write};
 use zcash_primitives::{
     legacy::TransparentAddress,
-    sapling::PaymentAddress,
+    sapling::{{keys::OutgoingViewingKey}, PaymentAddress},
     zip32::{ExtendedFullViewingKey, ExtendedSpendingKey},
 };
 
@@ -98,6 +98,17 @@ pub fn decode_extended_full_viewing_key(
     s: &str,
 ) -> Result<Option<ExtendedFullViewingKey>, Error> {
     bech32_decode(hrp, s, |data| ExtendedFullViewingKey::read(&data[..]).ok())
+}
+
+pub fn decode_outgoing_viewing_key(
+    hrp: &str,
+    s: &str,
+) -> Result<Option<OutgoingViewingKey>, Error> {
+    bech32_decode(hrp, s, |data| if data.len() == 32 {
+        Some(OutgoingViewingKey(data.try_into().expect("length is 32")))
+    } else {
+        None
+    })
 }
 
 /// Writes a [`PaymentAddress`] as a Bech32-encoded string.
@@ -310,6 +321,7 @@ mod tests {
         decode_extended_full_viewing_key, decode_extended_spending_key, decode_payment_address,
         encode_extended_full_viewing_key, encode_extended_spending_key, encode_payment_address,
     };
+    use crate::encoding::decode_outgoing_viewing_key;
 
     #[test]
     fn extended_spending_key() {
@@ -456,5 +468,12 @@ mod tests {
             .unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn outgoing_viewing_key() {
+        let key = "zivks1nu0e48jup3ecdzmlf523w5fja9yshxjr8jr7t9h8ngjd4rff7upse40mtg";
+        let hrp = "zivks";
+        let _key = decode_outgoing_viewing_key(hrp, key).unwrap().unwrap();
     }
 }
