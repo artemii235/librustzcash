@@ -448,7 +448,12 @@ impl<'a, P: consensus::Parameters> WalletWrite for DataConnStmtCache<'a, P> {
             }
 
             // Prune the stored witnesses (we only expect rollbacks of at most 100 blocks).
-            wallet::prune_witnesses(up, block.block_height - 100)?;
+            let below_height = if block.block_height < BlockHeight::from(100) {
+                BlockHeight::from(0)
+            } else {
+                block.block_height - 100
+            };
+            wallet::prune_witnesses(up, below_height)?;
 
             // Update now-expired transactions that didn't get mined.
             wallet::update_expired_notes(up, block.block_height)?;
