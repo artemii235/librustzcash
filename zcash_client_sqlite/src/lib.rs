@@ -87,6 +87,10 @@ pub struct WalletDb<P> {
 }
 
 impl<P: consensus::Parameters> WalletDb<P> {
+    pub fn sql_conn(&self) -> &Connection {
+        &self.conn
+    }
+
     /// Construct a connection to the wallet database stored at the specified path.
     pub fn for_path<F: AsRef<Path>>(path: F, params: P) -> Result<Self, rusqlite::Error> {
         Connection::open(path).map(move |conn| WalletDb { conn, params })
