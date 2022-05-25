@@ -9,11 +9,17 @@ license = "MIT OR Apache-2.0"
 edition = "2018"
 
 [dependencies]
-blake2b_simd = "0.5"
-zcash_primitives = { version = "0.5", path = "../zcash_primitives", features = ["zfuture"] }
+blake2b_simd = "1"
+zcash_primitives = { version = "0.6", path = "../zcash_primitives", features = ["zfuture" ] }
 
 [dev-dependencies]
-ff = "0.8"
-jubjub = "0.5.1"
-rand_core = "0.5.1"
-zcash_proofs = { version = "0.5", path = "../zcash_proofs" }
+ff = "0.12"
+jubjub = "0.9"
+rand_core = "0.6"
+zcash_proofs = { version = "0.6", path = "../zcash_proofs" }
+
+[features]
+transparent-inputs = []
+
+[lib]
+bench = false

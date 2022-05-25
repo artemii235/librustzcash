@@ -6,9 +6,8 @@ use zcash_primitives::{
     consensus::BlockHeight,
     sapling::Node,
     transaction::{builder, components::amount::Amount, TxId},
+    zip32::AccountId,
 };
-
-use crate::wallet::AccountId;
 
 #[derive(Debug)]
 pub enum ChainInvalid {
@@ -24,7 +23,12 @@ pub enum ChainInvalid {
 
 #[derive(Debug)]
 pub enum Error<NoteId> {
+    /// The amount specified exceeds the allowed range.
+    InvalidAmount,
+
     /// Unable to create a new spend because the wallet balance is not sufficient.
+    /// The first argument is the amount available, the second is the amount needed
+    /// to construct a valid transaction.
     InsufficientBalance(Amount, Amount),
 
     /// Chain validation detected an error in the block at the specified block height.
@@ -57,6 +61,9 @@ pub enum Error<NoteId> {
     /// The wallet attempted a sapling-only operation at a block
     /// height when Sapling was not yet active.
     SaplingNotActive,
+
+    /// It is forbidden to provide a memo when constructing a transparent output.
+    MemoForbidden,
 }
 
 impl ChainInvalid {
@@ -72,6 +79,10 @@ impl ChainInvalid {
 impl<N: fmt::Display> fmt::Display for Error<N> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
+            Error::InvalidAmount => write!(
+                f,
+                "The value lies outside the valid range of Zcash amounts."
+            ),
             Error::InsufficientBalance(have, need) => write!(
                 f,
                 "Insufficient balance (have {}, need {} including fee)",
@@ -81,7 +92,7 @@ impl<N: fmt::Display> fmt::Display for Error<N> {
                 write!(f, "Invalid chain (upper bound: {}): {:?}", u32::from(*upper_bound), cause)
             }
             Error::InvalidExtSk(account) => {
-                write!(f, "Incorrect ExtendedSpendingKey for account {}", account.0)
+                write!(f, "Incorrect ExtendedSpendingKey for account {}", u32::from(*account))
             }
             Error::InvalidNewWitnessAnchor(output, txid, last_height, anchor) => write!(
                 f,
@@ -97,6 +108,7 @@ impl<N: fmt::Display> fmt::Display for Error<N> {
             Error::Builder(e) => write!(f, "{:?}", e),
             Error::Protobuf(e) => write!(f, "{}", e),
             Error::SaplingNotActive => write!(f, "Could not determine Sapling upgrade activation height."),
+            Error::MemoForbidden => write!(f, "It is not possible to send a memo to a transparent address."),
         }
     }
 }

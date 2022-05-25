@@ -6,12 +6,22 @@ and this library adheres to Rust's notion of
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.6.0] - 2022-05-11
 ### Changed
-- MSRV is now 1.51.0.
+- MSRV is now 1.56.1.
+- Bumped dependencies to `ff 0.12`, `group 0.12`, `bellman 0.13`,
+  `bls12_381 0.7`, `jubjub 0.9`.
+- `zcash_proofs::sapling::SaplingVerificationContext::new` now takes a
+  `zip216_enabled` boolean; this is used to control how RedJubjub signatures are
+  validated.
 - Renamed the following in `zcash_proofs::circuit::sprout` to use lower-case
   abbreviations (matching Rust naming conventions):
   - `JSInput` to `JsInput`
   - `JSOutput` to `JsOutput`
+
+### Removed
+- `zcash_proofs::sapling::SaplingVerificationContext: Default`
 
 ## [0.5.0] - 2021-03-26
 ### Added

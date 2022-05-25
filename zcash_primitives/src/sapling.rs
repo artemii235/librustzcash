@@ -13,26 +13,29 @@ use blake2s_simd::Params as Blake2sParams;
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::{Field, PrimeField};
 use group::{Curve, Group, GroupEncoding};
+use incrementalmerkletree::{self, Altitude};
 use lazy_static::lazy_static;
 use rand_core::{CryptoRng, RngCore};
 use std::array::TryFromSliceError;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::io::{self, Read, Write};
 use subtle::{Choice, ConstantTimeEq};
 
 use crate::{
     constants::{self, SPENDING_KEY_GENERATOR},
-    merkle_tree::Hashable,
+    keys::prf_expand,
+    merkle_tree::{HashSer, Hashable},
+    transaction::components::amount::MAX_MONEY,
 };
 
 use self::{
     group_hash::group_hash,
-    keys::prf_expand,
     pedersen_hash::{pedersen_hash, Personalization},
     redjubjub::{PrivateKey, PublicKey, Signature},
 };
 
 pub const SAPLING_COMMITMENT_TREE_DEPTH: usize = 32;
+pub const SAPLING_COMMITMENT_TREE_DEPTH_U8: u8 = 32;
 
 /// Compute a parent node in the Sapling commitment tree given its two children.
 pub fn merkle_hash(depth: usize, lhs: &[u8; 32], rhs: &[u8; 32]) -> [u8; 32] {
@@ -80,7 +83,25 @@ impl Node {
     }
 }
 
-impl Hashable for Node {
+impl incrementalmerkletree::Hashable for Node {
+    fn empty_leaf() -> Self {
+        Node {
+            repr: Note::uncommitted().to_repr(),
+        }
+    }
+
+    fn combine(altitude: Altitude, lhs: &Self, rhs: &Self) -> Self {
+        Node {
+            repr: merkle_hash(altitude.into(), &lhs.repr, &rhs.repr),
+        }
+    }
+
+    fn empty_root(altitude: Altitude) -> Self {
+        EMPTY_ROOTS[<usize>::from(altitude)]
+    }
+}
+
+impl HashSer for Node {
     fn read<R: Read>(mut reader: R) -> io::Result<Self> {
         let mut repr = [0u8; 32];
         reader.read_exact(&mut repr)?;
@@ -90,27 +111,12 @@ impl Hashable for Node {
     fn write<W: Write>(&self, mut writer: W) -> io::Result<()> {
         writer.write_all(self.repr.as_ref())
     }
-
-    fn combine(depth: usize, lhs: &Self, rhs: &Self) -> Self {
-        Node {
-            repr: merkle_hash(depth, &lhs.repr, &rhs.repr),
-        }
-    }
-
-    fn blank() -> Self {
-        Node {
-            repr: Note::uncommitted().to_repr(),
-        }
-    }
-
-    fn empty_root(depth: usize) -> Self {
-        EMPTY_ROOTS[depth]
-    }
 }
 
 impl From<Node> for bls12_381::Scalar {
     fn from(node: Node) -> Self {
-        bls12_381::Scalar::from_repr(node.repr).expect("Tree nodes should be in the prime field")
+        // Tree nodes should be in the prime field.
+        bls12_381::Scalar::from_repr(node.repr).unwrap()
     }
 }
 
@@ -211,7 +217,7 @@ impl ViewingKey {
         // Drop the most significant five bits, so it can be interpreted as a scalar.
         h[31] &= 0b0000_0111;
 
-        SaplingIvk(jubjub::Fr::from_repr(h).expect("should be a valid scalar"))
+        SaplingIvk(jubjub::Fr::from_repr(h).unwrap())
     }
 
     pub fn to_payment_address(&self, diversifier: Diversifier) -> Option<PaymentAddress> {
@@ -360,10 +366,36 @@ impl Nullifier {
         self.0.to_vec()
     }
 }
+impl AsRef<[u8]> for Nullifier {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 impl ConstantTimeEq for Nullifier {
     fn ct_eq(&self, other: &Self) -> Choice {
         self.0.ct_eq(&other.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NoteValue(u64);
+
+impl TryFrom<u64> for NoteValue {
+    type Error = ();
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        if value <= MAX_MONEY as u64 {
+            Ok(NoteValue(value))
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl From<NoteValue> for u64 {
+    fn from(value: NoteValue) -> u64 {
+        value.0
     }
 }
 
@@ -482,6 +514,58 @@ impl Note {
             Rseed::AfterZip212(rseed) => Some(jubjub::Fr::from_bytes_wide(
                 prf_expand(&rseed, &[0x05]).as_array(),
             )),
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-dependencies"))]
+pub mod testing {
+    use proptest::prelude::*;
+    use std::cmp::min;
+    use std::convert::TryFrom;
+
+    use crate::{
+        transaction::components::amount::MAX_MONEY, zip32::testing::arb_extended_spending_key,
+    };
+
+    use super::{Node, Note, NoteValue, PaymentAddress, Rseed};
+
+    prop_compose! {
+        pub fn arb_note_value()(value in 0u64..=MAX_MONEY as u64) -> NoteValue {
+            NoteValue::try_from(value).unwrap()
+        }
+    }
+
+    prop_compose! {
+        /// The
+        pub fn arb_positive_note_value(bound: u64)(
+            value in 1u64..=(min(bound, MAX_MONEY as u64))
+        ) -> NoteValue {
+            NoteValue::try_from(value).unwrap()
+        }
+    }
+
+    pub fn arb_payment_address() -> impl Strategy<Value = PaymentAddress> {
+        arb_extended_spending_key().prop_map(|sk| sk.default_address().1)
+    }
+
+    prop_compose! {
+        pub fn arb_node()(value in prop::array::uniform32(prop::num::u8::ANY)) -> Node {
+            Node::new(value)
+        }
+    }
+
+    prop_compose! {
+        pub fn arb_note(value: NoteValue)(
+            addr in arb_payment_address(),
+            rseed in prop::array::uniform32(prop::num::u8::ANY).prop_map(Rseed::AfterZip212)
+        ) -> Note {
+            Note {
+                value: value.into(),
+                g_d: addr.g_d().unwrap(), // this unwrap is safe because arb_payment_address always generates an address with a valid g_d
+                pk_d: *addr.pk_d(),
+                rseed
+            }
         }
     }
 }

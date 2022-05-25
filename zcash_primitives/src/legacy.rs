@@ -4,7 +4,10 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 use std::io::{self, Read, Write};
 use std::ops::Shl;
 
-use crate::serialize::Vector;
+use zcash_encoding::Vector;
+
+#[cfg(feature = "transparent-inputs")]
+pub mod keys;
 
 /// Minimal subset of script opcodes.
 enum OpCode {
@@ -98,8 +101,8 @@ impl Shl<&[u8]> for Script {
 /// A transparent address corresponding to either a public key or a `Script`.
 #[derive(Debug, PartialEq, PartialOrd, Hash, Clone)]
 pub enum TransparentAddress {
-    PublicKey([u8; 20]),
-    Script([u8; 20]),
+    PublicKey([u8; 20]), // TODO: Rename to PublicKeyHash
+    Script([u8; 20]),    // TODO: Rename to ScriptHash
 }
 
 impl TransparentAddress {

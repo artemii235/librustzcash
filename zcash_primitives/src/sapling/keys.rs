@@ -6,36 +6,13 @@
 
 use crate::{
     constants::{PROOF_GENERATION_KEY_GENERATOR, SPENDING_KEY_GENERATOR},
+    keys::{prf_expand, OutgoingViewingKey},
     sapling::{ProofGenerationKey, ViewingKey},
 };
-use blake2b_simd::{Hash as Blake2bHash, Params as Blake2bParams};
 use ff::PrimeField;
 use group::{Group, GroupEncoding};
 use std::io::{self, Read, Write};
 use subtle::CtOption;
-
-pub const PRF_EXPAND_PERSONALIZATION: &[u8; 16] = b"Zcash_ExpandSeed";
-
-/// PRF^expand(sk, t) := BLAKE2b-512("Zcash_ExpandSeed", sk || t)
-pub fn prf_expand(sk: &[u8], t: &[u8]) -> Blake2bHash {
-    prf_expand_vec(sk, &[t])
-}
-
-pub fn prf_expand_vec(sk: &[u8], ts: &[&[u8]]) -> Blake2bHash {
-    let mut h = Blake2bParams::new()
-        .hash_length(64)
-        .personal(PRF_EXPAND_PERSONALIZATION)
-        .to_state();
-    h.update(sk);
-    for t in ts {
-        h.update(t);
-    }
-    h.finalize()
-}
-
-/// An outgoing viewing key
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct OutgoingViewingKey(pub [u8; 32]);
 
 /// A Sapling expanded spending key
 #[derive(Clone)]
@@ -72,12 +49,12 @@ impl ExpandedSpendingKey {
     pub fn read<R: Read>(mut reader: R) -> io::Result<Self> {
         let mut ask_repr = [0u8; 32];
         reader.read_exact(ask_repr.as_mut())?;
-        let ask = jubjub::Fr::from_repr(ask_repr)
+        let ask = Option::from(jubjub::Fr::from_repr(ask_repr))
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "ask not in field"))?;
 
         let mut nsk_repr = [0u8; 32];
         reader.read_exact(nsk_repr.as_mut())?;
-        let nsk = jubjub::Fr::from_repr(nsk_repr)
+        let nsk = Option::from(jubjub::Fr::from_repr(nsk_repr))
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "nsk not in field"))?;
 
         let mut ovk = [0u8; 32];
@@ -199,7 +176,7 @@ pub mod testing {
     prop_compose! {
         pub fn arb_shielded_addr()(extsk in arb_extended_spending_key()) -> PaymentAddress {
             let extfvk = ExtendedFullViewingKey::from(&extsk);
-            extfvk.default_address().unwrap().1
+            extfvk.default_address().1
         }
     }
 }

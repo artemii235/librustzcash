@@ -1,5 +1,8 @@
+use std::convert::TryFrom;
 use std::iter::Sum;
-use std::ops::{Add, AddAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Neg, Sub, SubAssign};
+
+use orchard::value as orchard;
 
 pub const COIN: i64 = 1_0000_0000;
 pub const MAX_MONEY: i64 = 21_000_000 * COIN;
@@ -19,6 +22,18 @@ pub const DEFAULT_FEE: Amount = Amount(1000);
 /// [`Transaction`]: crate::transaction::Transaction
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Amount(i64);
+
+impl memuse::DynamicUsage for Amount {
+    #[inline(always)]
+    fn dynamic_usage(&self) -> usize {
+        0
+    }
+
+    #[inline(always)]
+    fn dynamic_usage_bounds(&self) -> (usize, Option<usize>) {
+        (0, Some(0))
+    }
+}
 
 impl Amount {
     /// Returns a zero-valued Amount.
@@ -99,10 +114,32 @@ impl Amount {
     pub const fn is_negative(self) -> bool {
         self.0.is_negative()
     }
+
+    pub fn sum<I: IntoIterator<Item = Amount>>(values: I) -> Option<Amount> {
+        let mut result = Amount::zero();
+        for value in values {
+            result = (result + value)?;
+        }
+        Some(result)
+    }
+}
+
+impl TryFrom<i64> for Amount {
+    type Error = ();
+
+    fn try_from(value: i64) -> Result<Self, ()> {
+        Amount::from_i64(value)
+    }
 }
 
 impl From<Amount> for i64 {
     fn from(amount: Amount) -> i64 {
+        amount.0
+    }
+}
+
+impl From<&Amount> for i64 {
+    fn from(amount: &Amount) -> i64 {
         amount.0
     }
 }
@@ -114,36 +151,74 @@ impl From<Amount> for u64 {
 }
 
 impl Add<Amount> for Amount {
-    type Output = Amount;
+    type Output = Option<Amount>;
 
-    fn add(self, rhs: Amount) -> Amount {
-        Amount::from_i64(self.0 + rhs.0).expect("addition should remain in range")
+    fn add(self, rhs: Amount) -> Option<Amount> {
+        Amount::from_i64(self.0 + rhs.0).ok()
+    }
+}
+
+impl Add<Amount> for Option<Amount> {
+    type Output = Self;
+
+    fn add(self, rhs: Amount) -> Option<Amount> {
+        self.and_then(|lhs| lhs + rhs)
     }
 }
 
 impl AddAssign<Amount> for Amount {
     fn add_assign(&mut self, rhs: Amount) {
-        *self = *self + rhs
+        *self = (*self + rhs).expect("Addition must produce a valid amount value.")
     }
 }
 
 impl Sub<Amount> for Amount {
-    type Output = Amount;
+    type Output = Option<Amount>;
 
-    fn sub(self, rhs: Amount) -> Amount {
-        Amount::from_i64(self.0 - rhs.0).expect("subtraction should remain in range")
+    fn sub(self, rhs: Amount) -> Option<Amount> {
+        Amount::from_i64(self.0 - rhs.0).ok()
+    }
+}
+
+impl Sub<Amount> for Option<Amount> {
+    type Output = Self;
+
+    fn sub(self, rhs: Amount) -> Option<Amount> {
+        self.and_then(|lhs| lhs - rhs)
     }
 }
 
 impl SubAssign<Amount> for Amount {
     fn sub_assign(&mut self, rhs: Amount) {
-        *self = *self - rhs
+        *self = (*self - rhs).expect("Subtraction must produce a valid amount value.")
     }
 }
 
-impl Sum for Amount {
-    fn sum<I: Iterator<Item = Amount>>(iter: I) -> Amount {
-        iter.fold(Amount::zero(), Add::add)
+impl Sum<Amount> for Option<Amount> {
+    fn sum<I: Iterator<Item = Amount>>(iter: I) -> Self {
+        iter.fold(Some(Amount::zero()), |acc, a| acc? + a)
+    }
+}
+
+impl<'a> Sum<&'a Amount> for Option<Amount> {
+    fn sum<I: Iterator<Item = &'a Amount>>(iter: I) -> Self {
+        iter.fold(Some(Amount::zero()), |acc, a| acc? + *a)
+    }
+}
+
+impl Neg for Amount {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Amount(-self.0)
+    }
+}
+
+impl TryFrom<orchard::ValueSum> for Amount {
+    type Error = ();
+
+    fn try_from(v: orchard::ValueSum) -> Result<Amount, Self::Error> {
+        i64::try_from(v).map_err(|_| ()).and_then(Amount::try_from)
     }
 }
 
@@ -154,7 +229,19 @@ pub mod testing {
     use super::{Amount, MAX_MONEY};
 
     prop_compose! {
+        pub fn arb_amount()(amt in -MAX_MONEY..MAX_MONEY) -> Amount {
+            Amount::from_i64(amt).unwrap()
+        }
+    }
+
+    prop_compose! {
         pub fn arb_nonnegative_amount()(amt in 0i64..MAX_MONEY) -> Amount {
+            Amount::from_i64(amt).unwrap()
+        }
+    }
+
+    prop_compose! {
+        pub fn arb_positive_amount()(amt in 1i64..MAX_MONEY) -> Amount {
             Amount::from_i64(amt).unwrap()
         }
     }
@@ -213,10 +300,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn add_panics_on_overflow() {
+    fn add_overflow() {
         let v = Amount(MAX_MONEY);
-        let _sum = v + Amount(1);
+        assert_eq!(v + Amount(1), None)
     }
 
     #[test]
@@ -227,10 +313,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn sub_panics_on_underflow() {
+    fn sub_underflow() {
         let v = Amount(-MAX_MONEY);
-        let _diff = v - Amount(1);
+        assert_eq!(v - Amount(1), None)
     }
 
     #[test]

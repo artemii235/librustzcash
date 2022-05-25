@@ -1,7 +1,15 @@
 //! Core traits and structs for Transparent Zcash Extensions.
 
-use crate::transaction::components::{Amount, TzeOut, TzeOutPoint};
 use std::fmt;
+
+use crate::transaction::components::{
+    tze::{self, TzeOut},
+    Amount,
+};
+
+/// A typesafe wrapper for witness payloads
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuthData(pub Vec<u8>);
 
 /// Binary parsing capability for TZE preconditions & witnesses.
 ///
@@ -62,28 +70,38 @@ impl Precondition {
 /// treated as opaque to all but the extension corresponding to the encapsulated `extension_id`
 /// value.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Witness {
+pub struct Witness<T> {
     pub extension_id: u32,
     pub mode: u32,
-    pub payload: Vec<u8>,
+    pub payload: T,
 }
 
-impl Witness {
+impl<T> Witness<T> {
+    pub fn map_payload<U, F: FnOnce(T) -> U>(self, f: F) -> Witness<U> {
+        Witness {
+            extension_id: self.extension_id,
+            mode: self.mode,
+            payload: f(self.payload),
+        }
+    }
+}
+
+impl Witness<AuthData> {
     /// Produce the intermediate format for an extension-specific witness
     /// type.
-    pub fn from<P: ToPayload>(extension_id: u32, value: &P) -> Witness {
+    pub fn from<P: ToPayload>(extension_id: u32, value: &P) -> Witness<AuthData> {
         let (mode, payload) = value.to_payload();
         Witness {
             extension_id,
             mode,
-            payload,
+            payload: AuthData(payload),
         }
     }
 
     /// Attempt to parse an extension-specific witness value from the
     /// intermediate representation.
     pub fn try_to<P: FromPayload>(&self) -> Result<P, P::Error> {
-        P::from_payload(self.mode, &self.payload)
+        P::from_payload(self.mode, &self.payload.0)
     }
 }
 
@@ -137,7 +155,7 @@ pub trait Extension<C> {
     fn verify(
         &self,
         precondition: &Precondition,
-        witness: &Witness,
+        witness: &Witness<AuthData>,
         context: &C,
     ) -> Result<(), Self::Error>
     where
@@ -146,8 +164,8 @@ pub trait Extension<C> {
     {
         self.verify_inner(
             &Self::Precondition::from_payload(precondition.mode, &precondition.payload)?,
-            &Self::Witness::from_payload(witness.mode, &witness.payload)?,
-            &context,
+            &Self::Witness::from_payload(witness.mode, &witness.payload.0)?,
+            context,
         )
     }
 }
@@ -178,7 +196,7 @@ pub trait ExtensionTxBuilder<'a> {
         &mut self,
         extension_id: u32,
         mode: u32,
-        prevout: (TzeOutPoint, TzeOut),
+        prevout: (tze::OutPoint, TzeOut),
         witness_builder: WBuilder,
     ) -> Result<(), Self::BuildError>
     where

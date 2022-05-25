@@ -5,7 +5,7 @@
 
 use ff::{Field, PrimeField};
 use group::GroupEncoding;
-use jubjub::{ExtendedPoint, SubgroupPoint};
+use jubjub::{AffinePoint, ExtendedPoint, SubgroupPoint};
 use rand_core::RngCore;
 use std::io::{self, Read, Write};
 use std::ops::{AddAssign, MulAssign, Neg};
@@ -16,7 +16,7 @@ fn read_scalar<R: Read>(mut reader: R) -> io::Result<jubjub::Fr> {
     let mut s_repr = [0u8; 32];
     reader.read_exact(s_repr.as_mut())?;
 
-    jubjub::Fr::from_repr(s_repr)
+    Option::from(jubjub::Fr::from_repr(s_repr))
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "scalar is not in field"))
 }
 
@@ -55,6 +55,7 @@ impl Signature {
 }
 
 impl PrivateKey {
+    #[must_use]
     pub fn randomize(&self, alpha: jubjub::Fr) -> Self {
         let mut tmp = self.0;
         tmp.add_assign(&alpha);
@@ -100,6 +101,7 @@ impl PublicKey {
         PublicKey((p_g * privkey.0).into())
     }
 
+    #[must_use]
     pub fn randomize(&self, alpha: jubjub::Fr, p_g: SubgroupPoint) -> Self {
         PublicKey(ExtendedPoint::from(p_g * alpha) + self.0)
     }
@@ -123,13 +125,27 @@ impl PublicKey {
     }
 
     pub fn verify(&self, msg: &[u8], sig: &Signature, p_g: SubgroupPoint) -> bool {
+        self.verify_with_zip216(msg, sig, p_g, true)
+    }
+
+    pub fn verify_with_zip216(
+        &self,
+        msg: &[u8],
+        sig: &Signature,
+        p_g: SubgroupPoint,
+        zip216_enabled: bool,
+    ) -> bool {
         // c = H*(Rbar || M)
         let c = h_star(&sig.rbar[..], msg);
 
         // Signature checks:
         // R != invalid
         let r = {
-            let r = ExtendedPoint::from_bytes(&sig.rbar);
+            let r = if zip216_enabled {
+                ExtendedPoint::from_bytes(&sig.rbar)
+            } else {
+                AffinePoint::from_bytes_pre_zip216_compatibility(sig.rbar).map(|p| p.to_extended())
+            };
             if r.is_none().into() {
                 return false;
             }
