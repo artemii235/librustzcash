@@ -126,6 +126,7 @@ pub struct Builder<'a, P, R> {
     #[cfg(not(feature = "zfuture"))]
     tze_builder: PhantomData<&'a ()>,
     progress_notifier: Option<Sender<Progress>>,
+    lock_time: u32,
 }
 
 impl<'a, P: consensus::Parameters> Builder<'a, P, OsRng> {
@@ -178,6 +179,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
             #[cfg(not(feature = "zfuture"))]
             tze_builder: PhantomData,
             progress_notifier: None,
+            lock_time: 0,
         }
     }
 
@@ -216,13 +218,13 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
     pub fn add_transparent_input(
         &mut self,
         sk: secp256k1::SecretKey,
-        utxo: OutPoint,
+        utxo: transparent::OutPoint,
         sequence: u32,
-        script_data: Script,
+        script_data: transparent::Script,
         coin: TxOut,
     ) -> Result<(), Error> {
         self.transparent_inputs.push(sk, script_data, coin)?;
-        self.mtx.vin.push(TxIn::new(utxo, sequence));
+        self.mtx.vin.push(transparent::TxIn::new(utxo, sequence));
         Ok(())
     }
 
@@ -235,14 +237,6 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
         self.transparent_builder
             .add_output(to, value)
             .map_err(Error::TransparentBuild)
-    }
-
-    /// Adds a TxOut
-    pub fn add_tx_out(
-        &mut self,
-        out: TxOut,
-    ) {
-        self.mtx.vout.push(out);
     }
 
     /// Sets the Sapling address to which any change will be sent.
@@ -286,7 +280,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
     /// Upon success, returns a tuple containing the final transaction, and the
     /// [`SaplingMetadata`] generated during the build process.
     pub fn build(
-        mut self,
+        self,
         prover: &impl TxProver,
     ) -> Result<(Transaction, SaplingMetadata), Error> {
         let consensus_branch_id = BranchId::for_height(&self.params, self.target_height);
@@ -418,7 +412,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
     }
 
     pub fn set_lock_time(&mut self, lock_time: u32) {
-        self.mtx.lock_time = lock_time;
+        self.lock_time = lock_time;
     }
 }
 

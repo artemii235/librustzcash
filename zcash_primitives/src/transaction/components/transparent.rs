@@ -111,7 +111,7 @@ pub struct TxIn<A: Authorization> {
     pub sequence: u32,
 }
 
-impl impl TxIn<Authorized> {
+impl TxIn<Authorized> {
     #[cfg(feature = "transparent-inputs")]
     #[cfg_attr(docsrs, doc(cfg(feature = "transparent-inputs")))]
     pub fn new(prevout: OutPoint, sequence: u32) -> Self {

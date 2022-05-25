@@ -13,7 +13,8 @@ use std::io::{self, Write};
 use zcash_primitives::{
     consensus,
     legacy::TransparentAddress,
-    sapling::{{keys::OutgoingViewingKey}, PaymentAddress},
+    keys::OutgoingViewingKey,
+    sapling::PaymentAddress,
     zip32::{ExtendedFullViewingKey, ExtendedSpendingKey},
 };
 
