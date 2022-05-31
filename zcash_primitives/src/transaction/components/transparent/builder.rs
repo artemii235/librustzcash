@@ -22,7 +22,6 @@ use {
         TransactionData, TxDigests,
     },
     blake2b_simd::Hash as Blake2bHash,
-    ripemd::Digest,
 };
 
 #[derive(Debug, PartialEq)]
@@ -46,7 +45,9 @@ struct TransparentInputInfo {
     sk: secp256k1::SecretKey,
     pubkey: [u8; secp256k1::constants::PUBLIC_KEY_SIZE],
     utxo: OutPoint,
+    script_data: Script,
     coin: TxOut,
+    sequence: u32,
 }
 
 pub struct TransparentBuilder {
@@ -85,33 +86,23 @@ impl TransparentBuilder {
         &mut self,
         sk: secp256k1::SecretKey,
         utxo: OutPoint,
+        script_data: Script,
+        sequence: u32,
         coin: TxOut,
     ) -> Result<(), Error> {
         if coin.value.is_negative() {
             return Err(Error::InvalidAmount);
         }
 
-        // Ensure that the RIPEMD-160 digest of the public key associated with the
-        // provided secret key matches that of the address to which the provided
-        // output may be spent.
         let pubkey = secp256k1::PublicKey::from_secret_key(&self.secp, &sk).serialize();
-        match coin.script_pubkey.address() {
-            Some(TransparentAddress::PublicKey(hash)) => {
-                use ripemd::Ripemd160;
-                use sha2::{Digest, Sha256};
-
-                if hash[..] != Ripemd160::digest(&Sha256::digest(&pubkey))[..] {
-                    return Err(Error::InvalidAddress);
-                }
-            }
-            _ => return Err(Error::InvalidAddress),
-        }
 
         self.inputs.push(TransparentInputInfo {
             sk,
             pubkey,
             utxo,
+            script_data,
             coin,
+            sequence,
         });
 
         Ok(())
@@ -151,10 +142,10 @@ impl TransparentBuilder {
 
     pub fn build(self) -> Option<transparent::Bundle<Unauthorized>> {
         #[cfg(feature = "transparent-inputs")]
-        let vin: Vec<TxIn<Unauthorized>> = self
+        let vin: Vec<_> = self
             .inputs
             .iter()
-            .map(|i| TxIn::new(i.utxo.clone()))
+            .map(|i| TxIn::<Unauthorized>::new(i.utxo.clone(), i.sequence))
             .collect();
 
         #[cfg(not(feature = "transparent-inputs"))]
@@ -180,11 +171,11 @@ impl TransparentBuilder {
 impl TxIn<Unauthorized> {
     #[cfg(feature = "transparent-inputs")]
     #[cfg_attr(docsrs, doc(cfg(feature = "transparent-inputs")))]
-    pub fn new(prevout: OutPoint) -> Self {
+    pub fn new(prevout: OutPoint, sequence: u32) -> Self {
         TxIn {
             prevout,
             script_sig: (),
-            sequence: std::u32::MAX,
+            sequence,
         }
     }
 }
@@ -233,7 +224,7 @@ impl Bundle<Unauthorized> {
                     &SignableInput::Transparent {
                         hash_type: SIGHASH_ALL,
                         index,
-                        script_code: &info.coin.script_pubkey, // for p2pkh, always the same as script_pubkey
+                        script_code: &info.script_data,
                         script_pubkey: &info.coin.script_pubkey,
                         value: info.coin.value,
                     },

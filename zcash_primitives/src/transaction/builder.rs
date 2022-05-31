@@ -60,6 +60,12 @@ pub enum Error {
     TzeBuild(tze::builder::Error),
 }
 
+impl From<transparent::builder::Error> for Error {
+    fn from(err: transparent::builder::Error) -> Self {
+        Error::TransparentBuild(err)
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -219,12 +225,11 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
         &mut self,
         sk: secp256k1::SecretKey,
         utxo: transparent::OutPoint,
+        script_data: crate::legacy::Script,
         sequence: u32,
-        script_data: transparent::Script,
         coin: TxOut,
     ) -> Result<(), Error> {
-        self.transparent_inputs.push(sk, script_data, coin)?;
-        self.mtx.vin.push(transparent::TxIn::new(utxo, sequence));
+        self.transparent_builder.add_input(sk, utxo, script_data, sequence, coin)?;
         Ok(())
     }
 
