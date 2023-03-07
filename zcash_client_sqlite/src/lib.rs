@@ -114,6 +114,10 @@ pub struct WalletDb<P> {
 }
 
 impl<P: consensus::Parameters> WalletDb<P> {
+    pub fn sql_conn(&self) -> &Connection {
+        &self.conn
+    }
+
     /// Construct a connection to the wallet database stored at the specified path.
     pub fn for_path<F: AsRef<Path>>(path: F, params: P) -> Result<Self, rusqlite::Error> {
         Connection::open(path).and_then(move |conn| {
@@ -562,8 +566,12 @@ impl<'a, P: consensus::Parameters> WalletWrite for DataConnStmtCache<'a, P> {
                 }
             }
 
-            // Prune the stored witnesses (we only expect rollbacks of at most PRUNING_HEIGHT blocks).
-            wallet::prune_witnesses(up, block.block_height - PRUNING_HEIGHT)?;
+            let below_height = if block.block_height < BlockHeight::from(100) {
+                BlockHeight::from(0)
+            } else {
+                block.block_height - 100
+            };
+            wallet::prune_witnesses(up, below_height)?;
 
             // Update now-expired transactions that didn't get mined.
             wallet::update_expired_notes(up, block.block_height)?;

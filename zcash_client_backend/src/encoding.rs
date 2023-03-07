@@ -235,6 +235,21 @@ pub fn decode_extended_full_viewing_key(
     bech32_decode(hrp, s, |data| ExtendedFullViewingKey::read(&data[..]).ok())
 }
 
+pub fn decode_outgoing_viewing_key(
+    hrp: &str,
+    s: &str,
+) -> Result<sapling::keys::OutgoingViewingKey, Bech32DecodeError> {
+    bech32_decode(hrp, s, |data| {
+        if data.len() == 32 {
+            Some(sapling::keys::OutgoingViewingKey(
+                data.try_into().expect("length is 32"),
+            ))
+        } else {
+            None
+        }
+    })
+}
+
 /// Writes a [`PaymentAddress`] as a Bech32-encoded string.
 ///
 /// # Examples
@@ -452,10 +467,17 @@ mod tests {
     use zcash_primitives::{constants, sapling::PaymentAddress, zip32::ExtendedSpendingKey};
 
     use super::{
-        decode_extended_full_viewing_key, decode_extended_spending_key, decode_payment_address,
-        encode_extended_full_viewing_key, encode_extended_spending_key, encode_payment_address,
-        Bech32DecodeError,
+        decode_extended_full_viewing_key, decode_extended_spending_key,
+        decode_outgoing_viewing_key, decode_payment_address, encode_extended_full_viewing_key,
+        encode_extended_spending_key, encode_payment_address, Bech32DecodeError,
     };
+
+    #[test]
+    fn outgoing_viewing_key() {
+        let key = "zivks1nu0e48jup3ecdzmlf523w5fja9yshxjr8jr7t9h8ngjd4rff7upse40mtg";
+        let hrp = "zivks";
+        let _key = decode_outgoing_viewing_key(hrp, key).unwrap();
+    }
 
     #[test]
     fn extended_spending_key() {
