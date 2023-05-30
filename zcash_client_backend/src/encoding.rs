@@ -11,7 +11,7 @@ use std::convert::TryInto;
 use std::io::{self, Write};
 use zcash_primitives::{
     legacy::TransparentAddress,
-    sapling::{{keys::OutgoingViewingKey}, PaymentAddress},
+    sapling::{keys::OutgoingViewingKey, PaymentAddress},
     zip32::{ExtendedFullViewingKey, ExtendedSpendingKey},
 };
 
@@ -104,10 +104,12 @@ pub fn decode_outgoing_viewing_key(
     hrp: &str,
     s: &str,
 ) -> Result<Option<OutgoingViewingKey>, Error> {
-    bech32_decode(hrp, s, |data| if data.len() == 32 {
-        Some(OutgoingViewingKey(data.try_into().expect("length is 32")))
-    } else {
-        None
+    bech32_decode(hrp, s, |data| {
+        if data.len() == 32 {
+            Some(OutgoingViewingKey(data.try_into().expect("length is 32")))
+        } else {
+            None
+        }
     })
 }
 

@@ -225,12 +225,22 @@ struct TransparentInputs;
 
 impl TransparentInputs {
     #[cfg(feature = "transparent-inputs")]
-    fn push(&mut self, sk: secp256k1::SecretKey, script_data: Script, coin: TxOut) -> Result<(), Error> {
+    fn push(
+        &mut self,
+        sk: secp256k1::SecretKey,
+        script_data: Script,
+        coin: TxOut,
+    ) -> Result<(), Error> {
         if coin.value.is_negative() {
             return Err(Error::InvalidAmount);
         }
 
-        self.inputs.push(TransparentInputInfo { sk, script_data, redeem_script: coin.script_pubkey.clone(), coin });
+        self.inputs.push(TransparentInputInfo {
+            sk,
+            script_data,
+            redeem_script: coin.script_pubkey.clone(),
+            coin,
+        });
 
         Ok(())
     }
@@ -565,10 +575,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
     }
 
     /// Adds a TxOut
-    pub fn add_tx_out(
-        &mut self,
-        out: TxOut,
-    ) {
+    pub fn add_tx_out(&mut self, out: TxOut) {
         self.mtx.vout.push(out);
     }
 
