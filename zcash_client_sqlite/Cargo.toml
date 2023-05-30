@@ -20,8 +20,9 @@ group = "0.8"
 jubjub = "0.5.1"
 protobuf = "2.20"
 rand_core = "0.5.1"
-rusqlite = { version = "0.25", features = ["bundled", "time"] }
-time = "0.2"
+rusqlite = { version = "0.28", features = ["time"] }
+libsqlite3-sys= { version = "0.25.2", features = ["bundled"] }
+time = "0.3"
 zcash_client_backend = { version = "0.5", path = "../zcash_client_backend" }
 zcash_primitives = { version = "0.5", path = "../zcash_primitives" }
 
