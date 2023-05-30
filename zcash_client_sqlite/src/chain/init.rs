@@ -1,7 +1,5 @@
 //! Functions for initializing the various databases.
 
-use rusqlite::NO_PARAMS;
-
 use crate::BlockDb;
 
 /// Sets up the internal structure of the cache database.
@@ -25,7 +23,7 @@ pub fn init_cache_database(db_cache: &BlockDb) -> Result<(), rusqlite::Error> {
             height INTEGER PRIMARY KEY,
             data BLOB NOT NULL
         )",
-        NO_PARAMS,
+        [],
     )?;
     Ok(())
 }

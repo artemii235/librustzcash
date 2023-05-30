@@ -1,6 +1,6 @@
 //! Functions for initializing the various databases.
 
-use rusqlite::{types::ToSql, NO_PARAMS};
+use rusqlite::types::ToSql;
 
 use zcash_primitives::{
     block::BlockHash,
@@ -35,7 +35,7 @@ pub fn init_wallet_db<P>(wdb: &WalletDb<P>) -> Result<(), rusqlite::Error> {
             extfvk TEXT NOT NULL,
             address TEXT NOT NULL
         )",
-        NO_PARAMS,
+        [],
     )?;
     wdb.conn.execute(
         "CREATE TABLE IF NOT EXISTS blocks (
@@ -44,7 +44,7 @@ pub fn init_wallet_db<P>(wdb: &WalletDb<P>) -> Result<(), rusqlite::Error> {
             time INTEGER NOT NULL,
             sapling_tree BLOB NOT NULL
         )",
-        NO_PARAMS,
+        [],
     )?;
     wdb.conn.execute(
         "CREATE TABLE IF NOT EXISTS transactions (
@@ -57,7 +57,7 @@ pub fn init_wallet_db<P>(wdb: &WalletDb<P>) -> Result<(), rusqlite::Error> {
             raw BLOB,
             FOREIGN KEY (block) REFERENCES blocks(height)
         )",
-        NO_PARAMS,
+        [],
     )?;
     wdb.conn.execute(
         "CREATE TABLE IF NOT EXISTS received_notes (
@@ -77,7 +77,7 @@ pub fn init_wallet_db<P>(wdb: &WalletDb<P>) -> Result<(), rusqlite::Error> {
             FOREIGN KEY (spent) REFERENCES transactions(id_tx),
             CONSTRAINT tx_output UNIQUE (tx, output_index)
         )",
-        NO_PARAMS,
+        [],
     )?;
     wdb.conn.execute(
         "CREATE TABLE IF NOT EXISTS sapling_witnesses (
@@ -89,7 +89,7 @@ pub fn init_wallet_db<P>(wdb: &WalletDb<P>) -> Result<(), rusqlite::Error> {
             FOREIGN KEY (block) REFERENCES blocks(height),
             CONSTRAINT witness_height UNIQUE (note, block)
         )",
-        NO_PARAMS,
+        [],
     )?;
     wdb.conn.execute(
         "CREATE TABLE IF NOT EXISTS sent_notes (
@@ -104,7 +104,7 @@ pub fn init_wallet_db<P>(wdb: &WalletDb<P>) -> Result<(), rusqlite::Error> {
             FOREIGN KEY (from_account) REFERENCES accounts(account),
             CONSTRAINT tx_output UNIQUE (tx, output_index)
         )",
-        NO_PARAMS,
+        [],
     )?;
     Ok(())
 }
@@ -148,12 +148,12 @@ pub fn init_accounts_table<P: consensus::Parameters>(
     extfvks: &[ExtendedFullViewingKey],
 ) -> Result<(), SqliteClientError> {
     let mut empty_check = wdb.conn.prepare("SELECT * FROM accounts LIMIT 1")?;
-    if empty_check.exists(NO_PARAMS)? {
+    if empty_check.exists([])? {
         return Err(SqliteClientError::TableNotEmpty);
     }
 
     // Insert accounts atomically
-    wdb.conn.execute("BEGIN IMMEDIATE", NO_PARAMS)?;
+    wdb.conn.execute("BEGIN IMMEDIATE", [])?;
     for (account, extfvk) in extfvks.iter().enumerate() {
         let extfvk_str = encode_extended_full_viewing_key(
             wdb.params.hrp_sapling_extended_full_viewing_key(),
@@ -165,14 +165,14 @@ pub fn init_accounts_table<P: consensus::Parameters>(
         wdb.conn.execute(
             "INSERT INTO accounts (account, extfvk, address)
             VALUES (?, ?, ?)",
-            &[
+            [
                 (account as u32).to_sql()?,
                 extfvk_str.to_sql()?,
                 address_str.to_sql()?,
             ],
         )?;
     }
-    wdb.conn.execute("COMMIT", NO_PARAMS)?;
+    wdb.conn.execute("COMMIT", [])?;
 
     Ok(())
 }
@@ -217,14 +217,14 @@ pub fn init_blocks_table<P>(
     sapling_tree: &[u8],
 ) -> Result<(), SqliteClientError> {
     let mut empty_check = wdb.conn.prepare("SELECT * FROM blocks LIMIT 1")?;
-    if empty_check.exists(NO_PARAMS)? {
+    if empty_check.exists([])? {
         return Err(SqliteClientError::TableNotEmpty);
     }
 
     wdb.conn.execute(
         "INSERT INTO blocks (height, hash, time, sapling_tree)
         VALUES (?, ?, ?, ?)",
-        &[
+        [
             u32::from(height).to_sql()?,
             hash.0.to_sql()?,
             time.to_sql()?,

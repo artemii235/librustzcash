@@ -8,7 +8,7 @@
 //! [`WalletWrite`]: zcash_client_backend::data_api::WalletWrite
 
 use ff::PrimeField;
-use rusqlite::{params, OptionalExtension, ToSql, NO_PARAMS};
+use rusqlite::{params, OptionalExtension, ToSql};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 
@@ -124,7 +124,7 @@ pub fn get_address<P: consensus::Parameters>(
     let addr: String = wdb.conn.query_row(
         "SELECT address FROM accounts
         WHERE account = ?",
-        &[account.0],
+        [account.0],
         |row| row.get(0),
     )?;
 
@@ -144,7 +144,7 @@ pub fn get_extended_full_viewing_keys<P: consensus::Parameters>(
         .prepare("SELECT account, extfvk FROM accounts ORDER BY account ASC")?;
 
     let rows = stmt_fetch_accounts
-        .query_map(NO_PARAMS, |row| {
+        .query_map([], |row| {
             let acct = row.get(0).map(AccountId)?;
             let extfvk = row.get(1).map(|extfvk: String| {
                 decode_extended_full_viewing_key(
@@ -179,7 +179,7 @@ pub fn is_valid_account_extfvk<P: consensus::Parameters>(
 ) -> Result<bool, SqliteClientError> {
     wdb.conn
         .prepare("SELECT * FROM accounts WHERE account = ? AND extfvk = ?")?
-        .exists(&[
+        .exists([
             account.0.to_sql()?,
             encode_extended_full_viewing_key(
                 wdb.params.hrp_sapling_extended_full_viewing_key(),
@@ -218,7 +218,7 @@ pub fn get_balance<P>(wdb: &WalletDb<P>, account: AccountId) -> Result<Amount, S
         "SELECT SUM(value) FROM received_notes
         INNER JOIN transactions ON transactions.id_tx = received_notes.tx
         WHERE account = ? AND spent IS NULL AND transactions.block IS NOT NULL",
-        &[account.0],
+        [account.0],
         |row| row.get(0).or(Ok(0)),
     )?;
 
@@ -258,7 +258,7 @@ pub fn get_balance_at<P>(
         "SELECT SUM(value) FROM received_notes
         INNER JOIN transactions ON transactions.id_tx = received_notes.tx
         WHERE account = ? AND spent IS NULL AND transactions.block <= ?",
-        &[account.0, u32::from(anchor_height)],
+        [account.0, u32::from(anchor_height)],
         |row| row.get(0).or(Ok(0)),
     )?;
 
@@ -294,7 +294,7 @@ pub fn get_received_memo<P>(wdb: &WalletDb<P>, id_note: i64) -> Result<Memo, Sql
     let memo_bytes: Vec<_> = wdb.conn.query_row(
         "SELECT memo FROM received_notes
         WHERE id_note = ?",
-        &[id_note],
+        [id_note],
         |row| row.get(0),
     )?;
 
@@ -327,7 +327,7 @@ pub fn get_sent_memo<P>(wdb: &WalletDb<P>, id_note: i64) -> Result<Memo, SqliteC
     let memo_bytes: Vec<_> = wdb.conn.query_row(
         "SELECT memo FROM sent_notes
         WHERE id_note = ?",
-        &[id_note],
+        [id_note],
         |row| row.get(0),
     )?;
 
@@ -356,18 +356,14 @@ pub fn block_height_extrema<P>(
     wdb: &WalletDb<P>,
 ) -> Result<Option<(BlockHeight, BlockHeight)>, rusqlite::Error> {
     wdb.conn
-        .query_row(
-            "SELECT MIN(height), MAX(height) FROM blocks",
-            NO_PARAMS,
-            |row| {
-                let min_height: u32 = row.get(0)?;
-                let max_height: u32 = row.get(1)?;
-                Ok(Some((
-                    BlockHeight::from(min_height),
-                    BlockHeight::from(max_height),
-                )))
-            },
-        )
+        .query_row("SELECT MIN(height), MAX(height) FROM blocks", [], |row| {
+            let min_height: u32 = row.get(0)?;
+            let max_height: u32 = row.get(1)?;
+            Ok(Some((
+                BlockHeight::from(min_height),
+                BlockHeight::from(max_height),
+            )))
+        })
         //.optional() doesn't work here because a failed aggregate function
         //produces a runtime error, not an empty set of rows.
         .or(Ok(None))
@@ -398,7 +394,7 @@ pub fn get_tx_height<P>(
     wdb.conn
         .query_row(
             "SELECT block FROM transactions WHERE txid = ?",
-            &[txid.0.to_vec()],
+            [txid.0.to_vec()],
             |row| row.get(0).map(u32::into),
         )
         .optional()
@@ -428,7 +424,7 @@ pub fn get_block_hash<P>(
     wdb.conn
         .query_row(
             "SELECT hash FROM blocks WHERE height = ?",
-            &[u32::from(block_height)],
+            [u32::from(block_height)],
             |row| {
                 let row_data = row.get::<_, Vec<_>>(0)?;
                 Ok(BlockHash::from_slice(&row_data))
@@ -453,13 +449,13 @@ pub fn rewind_to_height<P: consensus::Parameters>(
         .ok_or(SqliteClientError::BackendError(Error::SaplingNotActive))?;
 
     // Recall where we synced up to previously.
-    let last_scanned_height =
-        wdb.conn
-            .query_row("SELECT MAX(height) FROM blocks", NO_PARAMS, |row| {
-                row.get(0)
-                    .map(|h: u32| h.into())
-                    .or(Ok(sapling_activation_height - 1))
-            })?;
+    let last_scanned_height = wdb
+        .conn
+        .query_row("SELECT MAX(height) FROM blocks", [], |row| {
+            row.get(0)
+                .map(|h: u32| h.into())
+                .or(Ok(sapling_activation_height - 1))
+        })?;
 
     // nothing to do if we're deleting back down to the max height
     if block_height >= last_scanned_height {
@@ -468,19 +464,19 @@ pub fn rewind_to_height<P: consensus::Parameters>(
         // Decrement witnesses.
         wdb.conn.execute(
             "DELETE FROM sapling_witnesses WHERE block > ?",
-            &[u32::from(block_height)],
+            [u32::from(block_height)],
         )?;
 
         // Un-mine transactions.
         wdb.conn.execute(
             "UPDATE transactions SET block = NULL, tx_index = NULL WHERE block > ?",
-            &[u32::from(block_height)],
+            [u32::from(block_height)],
         )?;
 
         // Now that they aren't depended on, delete scanned blocks.
         wdb.conn.execute(
             "DELETE FROM blocks WHERE height > ?",
-            &[u32::from(block_height)],
+            [u32::from(block_height)],
         )?;
 
         Ok(())
@@ -511,7 +507,7 @@ pub fn get_commitment_tree<P>(
     wdb.conn
         .query_row_and_then(
             "SELECT sapling_tree FROM blocks WHERE height = ?",
-            &[u32::from(block_height)],
+            [u32::from(block_height)],
             |row| {
                 let row_data: Vec<u8> = row.get(0)?;
                 CommitmentTree::read(&row_data[..]).map_err(|e| {
@@ -552,7 +548,7 @@ pub fn get_witnesses<P>(
         .conn
         .prepare("SELECT note, witness FROM sapling_witnesses WHERE block = ?")?;
     let witnesses = stmt_fetch_witnesses
-        .query_map(&[u32::from(block_height)], |row| {
+        .query_map([u32::from(block_height)], |row| {
             let id_note = NoteId::ReceivedNoteId(row.get(0)?);
             let wdb: Vec<u8> = row.get(1)?;
             Ok(IncrementalWitness::read(&wdb[..]).map(|witness| (id_note, witness)))
@@ -578,7 +574,7 @@ pub fn get_nullifiers<P>(
             ON tx.id_tx = rn.spent
             WHERE block IS NULL",
     )?;
-    let nullifiers = stmt_fetch_nullifiers.query_map(NO_PARAMS, |row| {
+    let nullifiers = stmt_fetch_nullifiers.query_map([], |row| {
         let account = AccountId(row.get(1)?);
         let nf_bytes: Vec<u8> = row.get(2)?;
         Ok((account, Nullifier::from_slice(&nf_bytes).unwrap()))
@@ -632,7 +628,7 @@ pub fn put_tx_meta<'a, P, N>(
         // It was there, so grab its row number.
         stmts
             .stmt_select_tx_ref
-            .query_row(&[txid], |row| row.get(0))
+            .query_row([txid], |row| row.get(0))
             .map_err(SqliteClientError::from)
     }
 }
@@ -666,7 +662,7 @@ pub fn put_tx_data<'a, P>(
         // It was there, so grab its row number.
         stmts
             .stmt_select_tx_ref
-            .query_row(&[txid], |row| row.get(0))
+            .query_row([txid], |row| row.get(0))
             .map_err(SqliteClientError::from)
     }
 }
@@ -683,7 +679,7 @@ pub fn mark_spent<'a, P>(
 ) -> Result<(), SqliteClientError> {
     stmts
         .stmt_mark_recived_note_spent
-        .execute(&[tx_ref.to_sql()?, nf.0.to_sql()?])?;
+        .execute([tx_ref.to_sql()?, nf.0.to_sql()?])?;
     Ok(())
 }
 
@@ -763,7 +759,7 @@ pub fn prune_witnesses<P>(
 ) -> Result<(), SqliteClientError> {
     stmts
         .stmt_prune_witnesses
-        .execute(&[u32::from(below_height)])?;
+        .execute([u32::from(below_height)])?;
     Ok(())
 }
 
@@ -773,7 +769,7 @@ pub fn update_expired_notes<P>(
     stmts: &mut DataConnStmtCache<'_, P>,
     height: BlockHeight,
 ) -> Result<(), SqliteClientError> {
-    stmts.stmt_update_expired.execute(&[u32::from(height)])?;
+    stmts.stmt_update_expired.execute([u32::from(height)])?;
     Ok(())
 }
 
