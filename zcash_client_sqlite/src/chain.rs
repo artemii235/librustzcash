@@ -28,10 +28,10 @@ pub fn with_blocks<F>(
     cache: &BlockDb,
     from_height: BlockHeight,
     limit: Option<u32>,
-    mut with_row: F,
+    mut with_row: Box<F>,
 ) -> Box<dyn Future<Item = (), Error = SqliteClientError> + Send>
 where
-    F: FnMut(CompactBlock) -> Result<(), SqliteClientError> + Send,
+    F: FnMut(CompactBlock) -> Result<(), SqliteClientError> + ?Send,
 {
     // Fetch the CompactBlocks we need to scan
     let mut stmt_blocks = try_f!(cache.0.prepare(
@@ -70,6 +70,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+    use futures01::Future;
+    use futures::executor::block_on;
     use tempfile::NamedTempFile;
 
     use zcash_primitives::{
@@ -119,7 +122,7 @@ mod tests {
             &tests::network(),
             &db_cache,
             (&db_data).get_max_height_hash().unwrap(),
-        )
+        ).wait()
         .unwrap();
 
         // Create a fake CompactBlock sending value to the address
@@ -136,19 +139,19 @@ mod tests {
             &tests::network(),
             &db_cache,
             (&db_data).get_max_height_hash().unwrap(),
-        )
+        ).wait()
         .unwrap();
 
         // Scan the cache
-        let mut db_write = db_data.get_update_ops().unwrap();
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        let db_write = Arc::new(Mutex::new(db_data.get_update_ops().unwrap()));
+        scan_cached_blocks(&tests::network(), &db_cache, db_write.clone(), None).wait().unwrap();
 
         // Data-only chain should be valid
         validate_chain(
             &tests::network(),
             &db_cache,
             (&db_data).get_max_height_hash().unwrap(),
-        )
+        ).wait()
         .unwrap();
 
         // Create a second fake CompactBlock sending more value to the address
@@ -161,22 +164,22 @@ mod tests {
         insert_into_cache(&db_cache, &cb2);
 
         // Data+cache chain should be valid
-        validate_chain(
+       validate_chain(
             &tests::network(),
             &db_cache,
             (&db_data).get_max_height_hash().unwrap(),
-        )
+        ).wait()
         .unwrap();
 
         // Scan the cache again
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        scan_cached_blocks(&tests::network(), &db_cache, db_write, None).wait().unwrap();
 
         // Data-only chain should be valid
         validate_chain(
             &tests::network(),
             &db_cache,
             (&db_data).get_max_height_hash().unwrap(),
-        )
+        ).wait()
         .unwrap();
     }
 
@@ -212,16 +215,15 @@ mod tests {
         insert_into_cache(&db_cache, &cb2);
 
         // Scan the cache
-        let mut db_write = db_data.get_update_ops().unwrap();
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        let db_write = Arc::new(Mutex::new(db_data.get_update_ops().unwrap()));
+        scan_cached_blocks(&tests::network(), &db_cache, db_write, None).wait().unwrap();
 
         // Data-only chain should be valid
         validate_chain(
             &tests::network(),
             &db_cache,
             (&db_data).get_max_height_hash().unwrap(),
-        )
-        .unwrap();
+        ).wait().unwrap();
 
         // Create more fake CompactBlocks that don't connect to the scanned ones
         let (cb3, _) = fake_compact_block(
@@ -244,7 +246,7 @@ mod tests {
             &tests::network(),
             &db_cache,
             (&db_data).get_max_height_hash().unwrap(),
-        ) {
+        ).wait() {
             Err(SqliteClientError::BackendError(Error::InvalidChain(lower_bound, _))) => {
                 assert_eq!(lower_bound, sapling_activation_height() + 2)
             }
@@ -284,15 +286,15 @@ mod tests {
         insert_into_cache(&db_cache, &cb2);
 
         // Scan the cache
-        let mut db_write = db_data.get_update_ops().unwrap();
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        let db_write = Arc::new(Mutex::new(db_data.get_update_ops().unwrap()));
+        scan_cached_blocks(&tests::network(), &db_cache, db_write, None).wait().unwrap();
 
         // Data-only chain should be valid
         validate_chain(
             &tests::network(),
             &db_cache,
             (&db_data).get_max_height_hash().unwrap(),
-        )
+        ).wait()
         .unwrap();
 
         // Create more fake CompactBlocks that contain a reorg
@@ -316,7 +318,7 @@ mod tests {
             &tests::network(),
             &db_cache,
             (&db_data).get_max_height_hash().unwrap(),
-        ) {
+        ).wait() {
             Err(SqliteClientError::BackendError(Error::InvalidChain(lower_bound, _))) => {
                 assert_eq!(lower_bound, sapling_activation_height() + 3)
             }
@@ -358,8 +360,8 @@ mod tests {
         insert_into_cache(&db_cache, &cb2);
 
         // Scan the cache
-        let mut db_write = db_data.get_update_ops().unwrap();
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        let db_write = Arc::new(Mutex::new(db_data.get_update_ops().unwrap()));
+        scan_cached_blocks(&tests::network(), &db_cache, db_write.clone(), None).wait().unwrap();
 
         // Account balance should reflect both received notes
         assert_eq!(get_balance(&db_data, AccountId(0)).unwrap(), value + value2);
@@ -377,7 +379,7 @@ mod tests {
         assert_eq!(get_balance(&db_data, AccountId(0)).unwrap(), value);
 
         // Scan the cache again
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        scan_cached_blocks(&tests::network(), &db_cache, db_write.clone(), None).wait().unwrap();
 
         // Account balance should again reflect both received notes
         assert_eq!(get_balance(&db_data, AccountId(0)).unwrap(), value + value2);
@@ -407,8 +409,8 @@ mod tests {
             value,
         );
         insert_into_cache(&db_cache, &cb1);
-        let mut db_write = db_data.get_update_ops().unwrap();
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        let  db_write = Arc::new(Mutex::new(db_data.get_update_ops().unwrap()));
+        scan_cached_blocks(&tests::network(), &db_cache, db_write.clone(), None).wait().unwrap();
         assert_eq!(get_balance(&db_data, AccountId(0)).unwrap(), value);
 
         // We cannot scan a block of height SAPLING_ACTIVATION_HEIGHT + 2 next
@@ -421,7 +423,7 @@ mod tests {
         let (cb3, _) =
             fake_compact_block(sapling_activation_height() + 2, cb2.hash(), extfvk, value);
         insert_into_cache(&db_cache, &cb3);
-        match scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None) {
+        match scan_cached_blocks(&tests::network(), &db_cache, db_write.clone(), None).wait() {
             Err(SqliteClientError::BackendError(e)) => {
                 assert_eq!(
                     e.to_string(),
@@ -437,7 +439,7 @@ mod tests {
 
         // If we add a block of height SAPLING_ACTIVATION_HEIGHT + 1, we can now scan both
         insert_into_cache(&db_cache, &cb2);
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        scan_cached_blocks(&tests::network(), &db_cache, db_write.clone(), None).wait().unwrap();
         assert_eq!(
             get_balance(&db_data, AccountId(0)).unwrap(),
             Amount::from_u64(150_000).unwrap()
@@ -473,8 +475,8 @@ mod tests {
         insert_into_cache(&db_cache, &cb);
 
         // Scan the cache
-        let mut db_write = db_data.get_update_ops().unwrap();
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        let mut db_write = Arc::new(Mutex::new(db_data.get_update_ops().unwrap()));
+        scan_cached_blocks(&tests::network(), &db_cache, db_write.clone(), None).wait().unwrap();
 
         // Account balance should reflect the received note
         assert_eq!(get_balance(&db_data, AccountId(0)).unwrap(), value);
@@ -486,7 +488,7 @@ mod tests {
         insert_into_cache(&db_cache, &cb2);
 
         // Scan the cache again
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        scan_cached_blocks(&tests::network(), &db_cache, db_write, None).wait().unwrap();
 
         // Account balance should reflect both received notes
         assert_eq!(get_balance(&db_data, AccountId(0)).unwrap(), value + value2);
@@ -521,8 +523,8 @@ mod tests {
         insert_into_cache(&db_cache, &cb);
 
         // Scan the cache
-        let mut db_write = db_data.get_update_ops().unwrap();
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        let db_write = Arc::new(Mutex::new(db_data.get_update_ops().unwrap()));
+        scan_cached_blocks(&tests::network(), &db_cache, db_write.clone(), None).wait().unwrap();
 
         // Account balance should reflect the received note
         assert_eq!(get_balance(&db_data, AccountId(0)).unwrap(), value);
@@ -544,7 +546,7 @@ mod tests {
         );
 
         // Scan the cache again
-        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+        scan_cached_blocks(&tests::network(), &db_cache, db_write, None).wait().unwrap();
 
         // Account balance should equal the change
         assert_eq!(get_balance(&db_data, AccountId(0)).unwrap(), value - value2);

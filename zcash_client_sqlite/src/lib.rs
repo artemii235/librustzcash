@@ -543,10 +543,10 @@ impl BlockSource for BlockDb {
         &self,
         from_height: BlockHeight,
         limit: Option<u32>,
-        with_row: F,
+        with_row: Box<F>,
     ) -> Box<dyn Future<Item = (), Error = Self::Error> + Send>
-    where
-        F: FnMut(CompactBlock) -> Result<(), Self::Error> + Send,
+        where
+        F: FnMut(CompactBlock) -> Result<(), Self::Error> + ?Send,
     {
         chain::with_blocks(self, from_height, limit, with_row)
     }

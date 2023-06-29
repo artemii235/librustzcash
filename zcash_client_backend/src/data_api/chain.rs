@@ -91,6 +91,7 @@
 
 use futures01::Future;
 use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
 
 use zcash_primitives::{
     block::BlockHash,
@@ -158,7 +159,7 @@ where
     let mut prev_height = from_height;
     let mut prev_hash: Option<BlockHash> = validate_from.map(|(_, hash)| hash);
 
-    cache.with_blocks(from_height, None, move |block| {
+    cache.with_blocks(from_height, None,  Box::new( |block: CompactBlock| {
         let current_height = block.height();
         let result = if current_height != prev_height + 1 {
             Err(ChainInvalid::block_height_discontinuity(
@@ -176,7 +177,7 @@ where
         prev_height = current_height;
         prev_hash = Some(block.hash());
         result.map_err(E::from)
-    })
+    }))
 }
 
 #[allow(clippy::needless_doctest_main)]
@@ -241,43 +242,46 @@ where
 pub fn scan_cached_blocks<'a, E, N, P, C, D>(
     params: &P,
     cache: &C,
-    data: &mut D,
+    data: Arc<Mutex<D>>,
     limit: Option<u32>,
 ) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
 where
     P: consensus::Parameters + Send + Sync,
     C: BlockSource<Error = E>,
-    D: WalletWrite<Error = E, NoteRef = N> + Send,
+    D: WalletWrite<Error = E, NoteRef = N>,
     N: Copy + Debug + Send,
     E: From<Error<N>> + Send + 'a,
 {
+    let data_clone = data.lock().unwrap();
     let sapling_activation_height = try_f!(params
         .activation_height(NetworkUpgrade::Sapling)
         .ok_or(Error::SaplingNotActive));
 
     // Recall where we synced up to previously.
     // If we have never synced, use sapling activation height to select all cached CompactBlocks.
-    let mut last_height = try_f!(data.block_height_extrema().map(|opt| {
+    let mut last_height = try_f!(data_clone.block_height_extrema().map(|opt| {
         opt.map(|(_, max)| max)
             .unwrap_or(sapling_activation_height - 1)
     }));
 
     // Fetch the ExtendedFullViewingKeys we are tracking
-    let extfvks = try_f!(data.get_extended_full_viewing_keys());
+    let extfvks = try_f!(data_clone.get_extended_full_viewing_keys());
     let extfvks: Vec<(&AccountId, &ExtendedFullViewingKey)> = extfvks.iter().collect();
 
     // Get the most recent CommitmentTree
-    let mut tree = try_f!(data
+    let mut tree = try_f!(data_clone
         .get_commitment_tree(last_height)
         .map(|t| t.unwrap_or_else(CommitmentTree::empty)));
 
     // Get most recent incremental witnesses for the notes we are tracking
-    let mut witnesses = try_f!(data.get_witnesses(last_height));
+    let mut witnesses = try_f!(data_clone.get_witnesses(last_height));
 
     // Get the nullifiers for the notes we are tracking
-    let mut nullifiers = try_f!(data.get_nullifiers());
+    let mut nullifiers = try_f!(data_clone.get_nullifiers());
 
-    cache.with_blocks(last_height, limit, |block: CompactBlock| {
+        let data = data.clone();
+    cache.with_blocks(last_height, limit, Box::new(|block: CompactBlock| {
+        let mut data_clone = data.lock().unwrap();
         let current_height = block.height();
 
         // Scanned blocks MUST be height-sequential.
@@ -327,7 +331,7 @@ where
             }
         }
 
-        let new_witnesses = data.advance_by_block(
+        let new_witnesses = data_clone.advance_by_block(
             &(PrunedBlock {
                 block_height: current_height,
                 block_hash,
@@ -353,5 +357,5 @@ where
         last_height = current_height;
 
         Ok(())
-    })
+    }))
 }
