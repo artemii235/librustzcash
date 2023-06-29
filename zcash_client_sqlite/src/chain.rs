@@ -31,7 +31,7 @@ pub fn with_blocks<F>(
     mut with_row: F,
 ) -> Box<dyn Future<Item = (), Error = SqliteClientError> + Send>
 where
-    F: FnMut(CompactBlock) -> Result<(), SqliteClientError>,
+    F: FnMut(CompactBlock) -> Result<(), SqliteClientError> + Send,
 {
     // Fetch the CompactBlocks we need to scan
     let mut stmt_blocks = try_f!(cache.0.prepare(

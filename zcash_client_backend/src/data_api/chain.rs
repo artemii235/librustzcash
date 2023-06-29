@@ -245,10 +245,10 @@ pub fn scan_cached_blocks<'a, E, N, P, C, D>(
     limit: Option<u32>,
 ) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
 where
-    P: consensus::Parameters,
+    P: consensus::Parameters + Send + Sync,
     C: BlockSource<Error = E>,
-    D: WalletWrite<Error = E, NoteRef = N>,
-    N: Copy + Debug,
+    D: WalletWrite<Error = E, NoteRef = N> + Send,
+    N: Copy + Debug + Send,
     E: From<Error<N>> + Send + 'a,
 {
     let sapling_activation_height = try_f!(params
