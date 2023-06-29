@@ -19,3 +19,13 @@ pub mod welding_rig;
 pub mod zip321;
 
 pub use decrypt::{decrypt_transaction, DecryptedOutput};
+
+#[macro_export]
+macro_rules! try_f {
+    ($e: expr) => {
+        match $e {
+            Ok(ok) => ok,
+            Err(e) => return Box::new(futures01::future::err(e.into())),
+        }
+    };
+}

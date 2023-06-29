@@ -1,5 +1,6 @@
 //! Interfaces for wallet data persistence & low-level wallet utilities.
 
+use futures01::Future;
 use std::cmp;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -262,7 +263,7 @@ pub trait BlockSource {
         from_height: BlockHeight,
         limit: Option<u32>,
         with_row: F,
-    ) -> Result<(), Self::Error>
+    ) -> Box<dyn Future<Item = (), Error = Self::Error> + Send>
     where
         F: FnMut(CompactBlock) -> Result<(), Self::Error>;
 }

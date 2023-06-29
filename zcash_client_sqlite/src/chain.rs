@@ -1,4 +1,6 @@
 //! Functions for enforcing chain validity and handling chain reorgs.
+use futures01::Future;
+
 use protobuf::Message;
 
 use rusqlite::params;
@@ -27,16 +29,16 @@ pub fn with_blocks<F>(
     from_height: BlockHeight,
     limit: Option<u32>,
     mut with_row: F,
-) -> Result<(), SqliteClientError>
+) -> Box<dyn Future<Item = (), Error = SqliteClientError> + Send>
 where
     F: FnMut(CompactBlock) -> Result<(), SqliteClientError>,
 {
     // Fetch the CompactBlocks we need to scan
-    let mut stmt_blocks = cache.0.prepare(
+    let mut stmt_blocks = try_f!(cache.0.prepare(
         "SELECT height, data FROM compactblocks WHERE height > ? ORDER BY height ASC LIMIT ?",
-    )?;
+    ));
 
-    let rows = stmt_blocks.query_map(
+    let rows = try_f!(stmt_blocks.query_map(
         params![u32::from(from_height), limit.unwrap_or(u32::max_value()),],
         |row| {
             Ok(CompactBlockRow {
@@ -44,24 +46,26 @@ where
                 data: row.get(1)?,
             })
         },
-    )?;
+    ));
 
     for row_result in rows {
-        let cbr = row_result?;
-        let block: CompactBlock = Message::parse_from_bytes(&cbr.data).map_err(Error::from)?;
+        let cbr = try_f!(row_result);
+        let block: CompactBlock = try_f!(Message::parse_from_bytes(&cbr.data).map_err(Error::from));
 
         if block.height() != cbr.height {
-            return Err(SqliteClientError::CorruptedData(format!(
-                "Block height {} did not match row's height field value {}",
-                block.height(),
-                cbr.height
+            return Box::new(futures01::future::err(SqliteClientError::CorruptedData(
+                format!(
+                    "Block height {} did not match row's height field value {}",
+                    block.height(),
+                    cbr.height
+                ),
             )));
         }
 
-        with_row(block)?;
+        try_f!(with_row(block));
     }
 
-    Ok(())
+    Box::new(futures01::future::ok(()))
 }
 
 #[cfg(test)]

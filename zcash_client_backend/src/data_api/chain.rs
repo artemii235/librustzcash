@@ -89,6 +89,7 @@
 //! # }
 //! ```
 
+use futures01::Future;
 use std::fmt::Debug;
 
 use zcash_primitives::{
@@ -105,6 +106,7 @@ use crate::{
         BlockSource, PrunedBlock, WalletWrite,
     },
     proto::compact_formats::CompactBlock,
+    try_f,
     wallet::{AccountId, WalletTx},
     welding_rig::scan_block,
 };
@@ -131,19 +133,19 @@ use crate::{
 /// - `Err(e)` if there was an error during validation unrelated to chain validity.
 ///
 /// This function does not mutate either of the databases.
-pub fn validate_chain<N, E, P, C>(
+pub fn validate_chain<'a, N, E, P, C>(
     parameters: &P,
     cache: &C,
     validate_from: Option<(BlockHeight, BlockHash)>,
-) -> Result<(), E>
+) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
 where
-    E: From<Error<N>>,
+    E: From<Error<N>> + Send + 'a,
     P: consensus::Parameters,
     C: BlockSource<Error = E>,
 {
-    let sapling_activation_height = parameters
+    let sapling_activation_height = try_f!(parameters
         .activation_height(NetworkUpgrade::Sapling)
-        .ok_or(Error::SaplingNotActive)?;
+        .ok_or(Error::SaplingNotActive));
 
     // The cache will contain blocks above the `validate_from` height.  Validate from that maximum
     // height up to the chain tip, returning the hash of the block found in the cache at the
@@ -236,44 +238,44 @@ where
 /// # Ok(())
 /// # }
 /// ```
-pub fn scan_cached_blocks<E, N, P, C, D>(
+pub fn scan_cached_blocks<'a, E, N, P, C, D>(
     params: &P,
     cache: &C,
     data: &mut D,
     limit: Option<u32>,
-) -> Result<(), E>
+) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
 where
     P: consensus::Parameters,
     C: BlockSource<Error = E>,
     D: WalletWrite<Error = E, NoteRef = N>,
     N: Copy + Debug,
-    E: From<Error<N>>,
+    E: From<Error<N>> + Send + 'a,
 {
-    let sapling_activation_height = params
+    let sapling_activation_height = try_f!(params
         .activation_height(NetworkUpgrade::Sapling)
-        .ok_or(Error::SaplingNotActive)?;
+        .ok_or(Error::SaplingNotActive));
 
     // Recall where we synced up to previously.
     // If we have never synced, use sapling activation height to select all cached CompactBlocks.
-    let mut last_height = data.block_height_extrema().map(|opt| {
+    let mut last_height = try_f!(data.block_height_extrema().map(|opt| {
         opt.map(|(_, max)| max)
             .unwrap_or(sapling_activation_height - 1)
-    })?;
+    }));
 
     // Fetch the ExtendedFullViewingKeys we are tracking
-    let extfvks = data.get_extended_full_viewing_keys()?;
+    let extfvks = try_f!(data.get_extended_full_viewing_keys());
     let extfvks: Vec<(&AccountId, &ExtendedFullViewingKey)> = extfvks.iter().collect();
 
     // Get the most recent CommitmentTree
-    let mut tree = data
+    let mut tree = try_f!(data
         .get_commitment_tree(last_height)
-        .map(|t| t.unwrap_or_else(CommitmentTree::empty))?;
+        .map(|t| t.unwrap_or_else(CommitmentTree::empty)));
 
     // Get most recent incremental witnesses for the notes we are tracking
-    let mut witnesses = data.get_witnesses(last_height)?;
+    let mut witnesses = try_f!(data.get_witnesses(last_height));
 
     // Get the nullifiers for the notes we are tracking
-    let mut nullifiers = data.get_nullifiers()?;
+    let mut nullifiers = try_f!(data.get_nullifiers());
 
     cache.with_blocks(last_height, limit, |block: CompactBlock| {
         let current_height = block.height();
@@ -351,7 +353,5 @@ where
         last_height = current_height;
 
         Ok(())
-    })?;
-
-    Ok(())
+    })
 }

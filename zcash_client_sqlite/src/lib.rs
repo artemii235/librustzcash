@@ -32,6 +32,10 @@
 // Catch documentation errors caused by code changes.
 #![deny(broken_intra_doc_links)]
 
+#[macro_use]
+extern crate zcash_client_backend;
+
+use futures01::Future;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
@@ -540,7 +544,7 @@ impl BlockSource for BlockDb {
         from_height: BlockHeight,
         limit: Option<u32>,
         with_row: F,
-    ) -> Result<(), Self::Error>
+    ) -> Box<dyn Future<Item = (), Error = Self::Error> + Send>
     where
         F: FnMut(CompactBlock) -> Result<(), Self::Error>,
     {

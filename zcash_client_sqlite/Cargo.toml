@@ -16,6 +16,7 @@ edition = "2018"
 bech32 = "0.9.1"
 bs58 = { version = "0.4", features = ["check"] }
 ff = "0.8"
+futures01 = { version = "0.1", package = "futures" }
 group = "0.8"
 jubjub = "0.5.1"
 protobuf = "2.20"
