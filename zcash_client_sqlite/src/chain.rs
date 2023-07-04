@@ -31,7 +31,7 @@ pub fn with_blocks<F>(
     mut with_row: Box<F>,
 ) -> Box<dyn Future<Item = (), Error = SqliteClientError> + Send>
 where
-    F: FnMut(CompactBlock) -> Result<(), SqliteClientError> + ?Send,
+    F: FnMut(CompactBlock) -> Result<(), SqliteClientError>,
 {
     // Fetch the CompactBlocks we need to scan
     let mut stmt_blocks = try_f!(cache.0.prepare(
@@ -72,7 +72,6 @@ where
 mod tests {
     use std::sync::{Arc, Mutex};
     use futures01::Future;
-    use futures::executor::block_on;
     use tempfile::NamedTempFile;
 
     use zcash_primitives::{

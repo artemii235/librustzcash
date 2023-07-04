@@ -546,7 +546,7 @@ impl BlockSource for BlockDb {
         with_row: Box<F>,
     ) -> Box<dyn Future<Item = (), Error = Self::Error> + Send>
         where
-        F: FnMut(CompactBlock) -> Result<(), Self::Error> + ?Send,
+        F: FnMut(CompactBlock) -> Result<(), Self::Error> ,
     {
         chain::with_blocks(self, from_height, limit, with_row)
     }

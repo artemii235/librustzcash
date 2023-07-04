@@ -265,7 +265,7 @@ pub trait BlockSource {
         with_row: Box<F>,
     ) -> Box<dyn Future<Item = (), Error = Self::Error> + Send>
     where
-        F: FnMut(CompactBlock) -> Result<(), Self::Error> + ?Send;
+        F: FnMut(CompactBlock) -> Result<(), Self::Error>;
 }
 
 #[cfg(feature = "test-dependencies")]
@@ -301,7 +301,7 @@ pub mod testing {
             &self,
             _from_height: BlockHeight,
             _limit: Option<u32>,
-            _with_row: F,
+            _with_row: Box<F>,
         ) -> Result<(), Self::Error>
         where
             F: FnMut(CompactBlock) -> Result<(), Self::Error>,

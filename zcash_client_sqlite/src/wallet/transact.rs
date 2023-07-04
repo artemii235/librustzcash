@@ -150,7 +150,6 @@ pub fn select_spendable_notes<P>(
 mod tests {
     use std::sync::{Arc, Mutex};
     use futures01::Future;
-    use futures::executor::block_on;
     use rusqlite::Connection;
     use tempfile::NamedTempFile;
 
