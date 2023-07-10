@@ -252,36 +252,34 @@ where
     N: Copy + Debug + Send,
     E: From<Error<N>> + Send + 'a,
 {
-    let data_clone = data.lock().unwrap();
+    let mut data_guard = data.lock().unwrap();
     let sapling_activation_height = try_f!(params
         .activation_height(NetworkUpgrade::Sapling)
         .ok_or(Error::SaplingNotActive));
 
     // Recall where we synced up to previously.
     // If we have never synced, use sapling activation height to select all cached CompactBlocks.
-    let mut last_height = try_f!(data_clone.block_height_extrema().map(|opt| {
+    let mut last_height = try_f!(data_guard.block_height_extrema().map(|opt| {
         opt.map(|(_, max)| max)
             .unwrap_or(sapling_activation_height - 1)
     }));
 
     // Fetch the ExtendedFullViewingKeys we are tracking
-    let extfvks = try_f!(data_clone.get_extended_full_viewing_keys());
+    let extfvks = try_f!(data_guard.get_extended_full_viewing_keys());
     let extfvks: Vec<(&AccountId, &ExtendedFullViewingKey)> = extfvks.iter().collect();
 
     // Get the most recent CommitmentTree
-    let mut tree = try_f!(data_clone
+    let mut tree = try_f!(data_guard
         .get_commitment_tree(last_height)
         .map(|t| t.unwrap_or_else(CommitmentTree::empty)));
 
     // Get most recent incremental witnesses for the notes we are tracking
-    let mut witnesses = try_f!(data_clone.get_witnesses(last_height));
+    let mut witnesses = try_f!(data_guard.get_witnesses(last_height));
 
     // Get the nullifiers for the notes we are tracking
-    let mut nullifiers = try_f!(data_clone.get_nullifiers());
+    let mut nullifiers = try_f!(data_guard.get_nullifiers());
 
-        let data = data.clone();
     cache.with_blocks(last_height, limit, Box::new(|block: CompactBlock| {
-        let mut data_clone = data.lock().unwrap();
         let current_height = block.height();
 
         // Scanned blocks MUST be height-sequential.
@@ -331,7 +329,7 @@ where
             }
         }
 
-        let new_witnesses = data_clone.advance_by_block(
+        let new_witnesses = data_guard.advance_by_block(
             &(PrunedBlock {
                 block_height: current_height,
                 block_hash,
