@@ -15,13 +15,13 @@ use zcash_primitives::zip32::ExtendedFullViewingKey;
 
 /// This trait provides sequential access to raw blockchain data via a callback-oriented
 /// API.
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 pub trait BlockSource {
     type Error;
 
     /// Scan the specified `limit` number of blocks from the blockchain, starting at
     /// `from_height`, applying the provided callback to each block.
-    fn with_blocks<F>(
+    async fn with_blocks<F>(
         &self,
         from_height: BlockHeight,
         limit: Option<u32>,
@@ -29,6 +29,25 @@ pub trait BlockSource {
     ) -> Result<(), Self::Error>
     where
         F: FnMut(CompactBlock) -> Result<(), Self::Error>;
+}
+
+struct BlockSourceCaged;
+
+#[async_trait::async_trait(?Send)]
+impl BlockSource for BlockSourceCaged {
+    type Error = String;
+
+    async fn with_blocks<F>(
+        &self,
+        from_height: BlockHeight,
+        limit: Option<u32>,
+        with_row: Box<F>,
+    ) -> Result<(), Self::Error>
+    where
+        F: FnMut(CompactBlock) -> Result<(), Self::Error>,
+    {
+        todo!()
+    }
 }
 
 pub async fn validate_chain<'a, N, E, P, C>(
@@ -56,29 +75,31 @@ where
     let mut prev_height = from_height;
     let mut prev_hash: Option<BlockHash> = validate_from.map(|(_, hash)| hash);
 
-    cache.with_blocks(
-        from_height,
-        None,
-        Box::new(|block: CompactBlock| {
-            let current_height = block.height();
-            let result = if current_height != prev_height + 1 {
-                Err(ChainInvalid::block_height_discontinuity(
-                    prev_height + 1,
-                    current_height,
-                ))
-            } else {
-                match prev_hash {
-                    None => Ok(()),
-                    Some(h) if h == block.prev_hash() => Ok(()),
-                    Some(_) => Err(ChainInvalid::prev_hash_mismatch(current_height)),
-                }
-            };
+    cache
+        .with_blocks(
+            from_height,
+            None,
+            Box::new(|block: CompactBlock| {
+                let current_height = block.height();
+                let result = if current_height != prev_height + 1 {
+                    Err(ChainInvalid::block_height_discontinuity(
+                        prev_height + 1,
+                        current_height,
+                    ))
+                } else {
+                    match prev_hash {
+                        None => Ok(()),
+                        Some(h) if h == block.prev_hash() => Ok(()),
+                        Some(_) => Err(ChainInvalid::prev_hash_mismatch(current_height)),
+                    }
+                };
 
-            prev_height = current_height;
-            prev_hash = Some(block.hash());
-            result.map_err(E::from)
-        }),
-    )
+                prev_height = current_height;
+                prev_hash = Some(block.hash());
+                result.map_err(E::from)
+            }),
+        )
+        .await
 }
 
 pub async fn scan_cached_blocks<'a, E, N, P, C, D>(
@@ -121,87 +142,89 @@ where
     // Get the nullifiers for the notes we are tracking
     let mut nullifiers = data_guard.get_nullifiers()?;
 
-    cache.with_blocks(
-        last_height,
-        limit,
-        Box::new(|block: CompactBlock| {
-            let current_height = block.height();
+    cache
+        .with_blocks(
+            last_height,
+            limit,
+            Box::new(|block: CompactBlock| {
+                let current_height = block.height();
 
-            // Scanned blocks MUST be height-sequential.
-            if current_height != (last_height + 1) {
-                return Err(ChainInvalid::block_height_discontinuity(
-                    last_height + 1,
-                    current_height,
-                )
-                .into());
-            }
-
-            let block_hash = BlockHash::from_slice(&block.hash);
-            let block_time = block.time;
-
-            let txs: Vec<WalletTx<Nullifier>> = {
-                let mut witness_refs: Vec<_> = witnesses.iter_mut().map(|w| &mut w.1).collect();
-
-                scan_block(
-                    params,
-                    block,
-                    &extfvks,
-                    &nullifiers,
-                    &mut tree,
-                    &mut witness_refs[..],
-                )
-            };
-
-            // Enforce that all roots match. This is slow, so only include in debug builds.
-            #[cfg(debug_assertions)]
-            {
-                let cur_root = tree.root();
-                for row in &witnesses {
-                    if row.1.root() != cur_root {
-                        return Err(Error::InvalidWitnessAnchor(row.0, current_height).into());
-                    }
+                // Scanned blocks MUST be height-sequential.
+                if current_height != (last_height + 1) {
+                    return Err(ChainInvalid::block_height_discontinuity(
+                        last_height + 1,
+                        current_height,
+                    )
+                    .into());
                 }
-                for tx in &txs {
-                    for output in tx.shielded_outputs.iter() {
-                        if output.witness.root() != cur_root {
-                            return Err(Error::InvalidNewWitnessAnchor(
-                                output.index,
-                                tx.txid,
-                                current_height,
-                                output.witness.root(),
-                            )
-                            .into());
+
+                let block_hash = BlockHash::from_slice(&block.hash);
+                let block_time = block.time;
+
+                let txs: Vec<WalletTx<Nullifier>> = {
+                    let mut witness_refs: Vec<_> = witnesses.iter_mut().map(|w| &mut w.1).collect();
+
+                    scan_block(
+                        params,
+                        block,
+                        &extfvks,
+                        &nullifiers,
+                        &mut tree,
+                        &mut witness_refs[..],
+                    )
+                };
+
+                // Enforce that all roots match. This is slow, so only include in debug builds.
+                #[cfg(debug_assertions)]
+                {
+                    let cur_root = tree.root();
+                    for row in &witnesses {
+                        if row.1.root() != cur_root {
+                            return Err(Error::InvalidWitnessAnchor(row.0, current_height).into());
+                        }
+                    }
+                    for tx in &txs {
+                        for output in tx.shielded_outputs.iter() {
+                            if output.witness.root() != cur_root {
+                                return Err(Error::InvalidNewWitnessAnchor(
+                                    output.index,
+                                    tx.txid,
+                                    current_height,
+                                    output.witness.root(),
+                                )
+                                .into());
+                            }
                         }
                     }
                 }
-            }
 
-            let new_witnesses = data_guard.advance_by_block(
-                &(PrunedBlock {
-                    block_height: current_height,
-                    block_hash,
-                    block_time,
-                    commitment_tree: &tree,
-                    transactions: &txs,
-                }),
-                &witnesses,
-            )?;
+                let new_witnesses = data_guard.advance_by_block(
+                    &(PrunedBlock {
+                        block_height: current_height,
+                        block_hash,
+                        block_time,
+                        commitment_tree: &tree,
+                        transactions: &txs,
+                    }),
+                    &witnesses,
+                )?;
 
-            let spent_nf: Vec<Nullifier> = txs
-                .iter()
-                .flat_map(|tx| tx.shielded_spends.iter().map(|spend| spend.nf))
-                .collect();
-            nullifiers.retain(|(_, nf)| !spent_nf.contains(nf));
-            nullifiers.extend(
-                txs.iter()
-                    .flat_map(|tx| tx.shielded_outputs.iter().map(|out| (out.account, out.nf))),
-            );
+                let spent_nf: Vec<Nullifier> = txs
+                    .iter()
+                    .flat_map(|tx| tx.shielded_spends.iter().map(|spend| spend.nf))
+                    .collect();
+                nullifiers.retain(|(_, nf)| !spent_nf.contains(nf));
+                nullifiers
+                    .extend(txs.iter().flat_map(|tx| {
+                        tx.shielded_outputs.iter().map(|out| (out.account, out.nf))
+                    }));
 
-            witnesses.extend(new_witnesses);
+                witnesses.extend(new_witnesses);
 
-            last_height = current_height;
+                last_height = current_height;
 
-            Ok(())
-        }),
-    )
+                Ok(())
+            }),
+        )
+        .await
 }
