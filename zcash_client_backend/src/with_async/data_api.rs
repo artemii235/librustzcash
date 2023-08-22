@@ -6,7 +6,6 @@ use crate::data_api::error::{ChainInvalid, Error};
 use crate::data_api::{PrunedBlock, WalletWrite};
 use crate::wallet::{AccountId, WalletTx};
 use crate::welding_rig::scan_block;
-use futures01::Future;
 use zcash_primitives::block::BlockHash;
 use zcash_primitives::consensus;
 use zcash_primitives::consensus::{BlockHeight, NetworkUpgrade};
@@ -14,18 +13,9 @@ use zcash_primitives::merkle_tree::CommitmentTree;
 use zcash_primitives::sapling::Nullifier;
 use zcash_primitives::zip32::ExtendedFullViewingKey;
 
-#[macro_export]
-macro_rules! try_f {
-    ($e: expr) => {
-        match $e {
-            Ok(ok) => ok,
-            Err(e) => return Box::new(futures01::future::err(e.into())),
-        }
-    };
-}
-
 /// This trait provides sequential access to raw blockchain data via a callback-oriented
 /// API.
+#[async_trait::async_trait]
 pub trait BlockSource {
     type Error;
 
@@ -36,24 +26,24 @@ pub trait BlockSource {
         from_height: BlockHeight,
         limit: Option<u32>,
         with_row: Box<F>,
-    ) -> Box<dyn Future<Item = (), Error = Self::Error> + Send>
+    ) -> Result<(), Self::Error>
     where
         F: FnMut(CompactBlock) -> Result<(), Self::Error>;
 }
 
-pub fn validate_chain<'a, N, E, P, C>(
+pub async fn validate_chain<'a, N, E, P, C>(
     parameters: &P,
     cache: &C,
     validate_from: Option<(BlockHeight, BlockHash)>,
-) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
+) -> Result<(), E>
 where
     E: From<Error<N>> + Send + 'a,
     P: consensus::Parameters,
     C: BlockSource<Error = E>,
 {
-    let sapling_activation_height = try_f!(parameters
+    let sapling_activation_height = parameters
         .activation_height(NetworkUpgrade::Sapling)
-        .ok_or(Error::SaplingNotActive));
+        .ok_or(Error::SaplingNotActive)?;
 
     // The cache will contain blocks above the `validate_from` height.  Validate from that maximum
     // height up to the chain tip, returning the hash of the block found in the cache at the
@@ -91,12 +81,12 @@ where
     )
 }
 
-pub fn scan_cached_blocks<'a, E, N, P, C, D>(
+pub async fn scan_cached_blocks<'a, E, N, P, C, D>(
     params: &P,
     cache: &C,
     data: Arc<Mutex<D>>,
     limit: Option<u32>,
-) -> Box<dyn Future<Item = (), Error = E> + Send + 'a>
+) -> Result<(), E>
 where
     P: consensus::Parameters + Send + Sync,
     C: BlockSource<Error = E>,
@@ -105,31 +95,31 @@ where
     E: From<Error<N>> + Send + 'a,
 {
     let mut data_guard = data.lock().unwrap();
-    let sapling_activation_height = try_f!(params
+    let sapling_activation_height = params
         .activation_height(NetworkUpgrade::Sapling)
-        .ok_or(Error::SaplingNotActive));
+        .ok_or(Error::SaplingNotActive)?;
 
     // Recall where we synced up to previously.
     // If we have never synced, use sapling activation height to select all cached CompactBlocks.
-    let mut last_height = try_f!(data_guard.block_height_extrema().map(|opt| {
+    let mut last_height = data_guard.block_height_extrema().map(|opt| {
         opt.map(|(_, max)| max)
             .unwrap_or(sapling_activation_height - 1)
-    }));
+    })?;
 
     // Fetch the ExtendedFullViewingKeys we are tracking
-    let extfvks = try_f!(data_guard.get_extended_full_viewing_keys());
+    let extfvks = data_guard.get_extended_full_viewing_keys()?;
     let extfvks: Vec<(&AccountId, &ExtendedFullViewingKey)> = extfvks.iter().collect();
 
     // Get the most recent CommitmentTree
-    let mut tree = try_f!(data_guard
+    let mut tree = data_guard
         .get_commitment_tree(last_height)
-        .map(|t| t.unwrap_or_else(CommitmentTree::empty)));
+        .map(|t| t.unwrap_or_else(CommitmentTree::empty))?;
 
     // Get most recent incremental witnesses for the notes we are tracking
-    let mut witnesses = try_f!(data_guard.get_witnesses(last_height));
+    let mut witnesses = data_guard.get_witnesses(last_height)?;
 
     // Get the nullifiers for the notes we are tracking
-    let mut nullifiers = try_f!(data_guard.get_nullifiers());
+    let mut nullifiers = data_guard.get_nullifiers()?;
 
     cache.with_blocks(
         last_height,

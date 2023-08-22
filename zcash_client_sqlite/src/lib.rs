@@ -61,8 +61,8 @@ use crate::error::SqliteClientError;
 
 pub mod chain;
 pub mod error;
-pub mod mm2_ext;
 pub mod wallet;
+pub mod with_async;
 
 /// A newtype wrapper for sqlite primary key values for the notes
 /// table.
