@@ -1,11 +1,12 @@
-use crate::proto::compact_formats::CompactBlock;
-use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
-
 use crate::data_api::error::{ChainInvalid, Error};
 use crate::data_api::{PrunedBlock, WalletWrite};
+use crate::proto::compact_formats::CompactBlock;
 use crate::wallet::{AccountId, WalletTx};
 use crate::welding_rig::scan_block;
+
+use futures::lock::Mutex;
+use std::fmt::Debug;
+use std::sync::Arc;
 use zcash_primitives::block::BlockHash;
 use zcash_primitives::consensus;
 use zcash_primitives::consensus::{BlockHeight, NetworkUpgrade};
@@ -29,25 +30,6 @@ pub trait BlockSource {
     ) -> Result<(), Self::Error>
     where
         F: FnMut(CompactBlock) -> Result<(), Self::Error>;
-}
-
-struct BlockSourceCaged;
-
-#[async_trait::async_trait(?Send)]
-impl BlockSource for BlockSourceCaged {
-    type Error = String;
-
-    async fn with_blocks<F>(
-        &self,
-        from_height: BlockHeight,
-        limit: Option<u32>,
-        with_row: Box<F>,
-    ) -> Result<(), Self::Error>
-    where
-        F: FnMut(CompactBlock) -> Result<(), Self::Error>,
-    {
-        todo!()
-    }
 }
 
 pub async fn validate_chain<'a, N, E, P, C>(
@@ -115,7 +97,7 @@ where
     N: Copy + Debug + Send,
     E: From<Error<N>> + Send + 'a,
 {
-    let mut data_guard = data.lock().unwrap();
+    let mut data_guard = data.lock().await;
     let sapling_activation_height = params
         .activation_height(NetworkUpgrade::Sapling)
         .ok_or(Error::SaplingNotActive)?;
