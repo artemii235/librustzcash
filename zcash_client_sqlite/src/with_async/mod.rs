@@ -3,6 +3,7 @@ pub mod wallet_actions;
 use std::cmp;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::path::Path;
 use zcash_client_backend::data_api::wallet::ANCHOR_OFFSET;
 use zcash_client_backend::data_api::{PrunedBlock, ReceivedTransaction, SentTransaction};
 use zcash_client_backend::wallet::{AccountId, SpendableNote};
@@ -208,6 +209,15 @@ impl<P: consensus::Parameters> WalletDbAsync<P> {
     pub fn inner(&self) -> Arc<Mutex<WalletDb<P>>> {
         self.inner.clone()
     }
+
+    /// Construct a connection to the wallet database stored at the specified path.
+    pub fn for_path<F: AsRef<Path>>(path: F, params: P) -> Result<Self, rusqlite::Error> {
+        let db = Connection::open(path).map(move |conn| WalletDb { conn, params })?;
+        Ok(Self {
+            inner: Arc::new(Mutex::new(db)),
+        })
+    }
+
     /// Given a wallet database connection, obtain a handle for the write operations
     /// for that database. This operation may eagerly initialize and cache sqlite
     /// prepared statements that are used in write operations.
