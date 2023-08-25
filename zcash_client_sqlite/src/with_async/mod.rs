@@ -205,6 +205,9 @@ pub struct WalletDbAsync<P> {
 }
 
 impl<P: consensus::Parameters> WalletDbAsync<P> {
+    pub fn inner(&self) -> Arc<Mutex<WalletDb<P>>> {
+        self.inner.clone()
+    }
     /// Given a wallet database connection, obtain a handle for the write operations
     /// for that database. This operation may eagerly initialize and cache sqlite
     /// prepared statements that are used in write operations.
