@@ -16,7 +16,7 @@ use zcash_primitives::zip32::ExtendedFullViewingKey;
 
 /// This trait provides sequential access to raw blockchain data via a callback-oriented
 /// API.
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 pub trait BlockSource {
     type Error;
 
@@ -26,7 +26,7 @@ pub trait BlockSource {
         &self,
         from_height: BlockHeight,
         limit: Option<u32>,
-        with_row: Box<F>,
+        with_row: F,
     ) -> Result<(), Self::Error>
     where
         F: FnMut(CompactBlock) -> Result<(), Self::Error>;
