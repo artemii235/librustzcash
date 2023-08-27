@@ -178,6 +178,7 @@ pub trait WalletRead {
 
 /// The subset of information that is relevant to this wallet that has been
 /// decrypted and extracted from a [CompactBlock].
+#[derive(Clone)]
 pub struct PrunedBlock<'a> {
     pub block_height: BlockHeight,
     pub block_hash: BlockHash,
@@ -201,6 +202,7 @@ pub struct ReceivedTransaction<'a> {
 /// The purpose of this struct is to permit atomic updates of the
 /// wallet database when transactions are created and submitted
 /// to the network.
+#[derive(Clone)]
 pub struct SentTransaction<'a> {
     pub tx: &'a Transaction,
     pub created: time::OffsetDateTime,

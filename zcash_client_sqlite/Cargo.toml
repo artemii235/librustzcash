@@ -25,6 +25,7 @@ rand_core = "0.5.1"
 rusqlite = { version = "0.28", features = ["bundled", "time"] }
 libsqlite3-sys= { version = "0.25.2", features = ["bundled"] }
 time = "0.3"
+tokio = { version = "1.20", features = ["full"] }
 zcash_client_backend = { version = "0.5", path = "../zcash_client_backend" }
 zcash_primitives = { version = "0.5", path = "../zcash_primitives" }
 

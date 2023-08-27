@@ -1,6 +1,6 @@
 use crate::error::SqliteClientError;
 use crate::wallet::ShieldedOutput;
-use crate::with_async::WalletDbAsync;
+use crate::with_async::{async_blocking, WalletDbAsync};
 use crate::{NoteId, WalletDb};
 use ff::PrimeField;
 use rusqlite::{params, ToSql};
@@ -27,8 +27,8 @@ pub fn insert_block<P>(
     commitment_tree: &CommitmentTree<Node>,
 ) -> Result<(), SqliteClientError> {
     let mut encoded_tree = Vec::new();
-    commitment_tree.write(&mut encoded_tree).unwrap();
 
+    commitment_tree.write(&mut encoded_tree).unwrap();
     db.conn
         .prepare(
             "INSERT INTO blocks (height, hash, time, sapling_tree)

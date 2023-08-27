@@ -16,6 +16,16 @@ use zcash_primitives::transaction::components::Amount;
 use zcash_primitives::transaction::TxId;
 use zcash_primitives::zip32::ExtendedFullViewingKey;
 
+pub async fn async_blocking<F, R>(blocking_fn: F) -> R
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    tokio::task::spawn_blocking(blocking_fn)
+        .await
+        .expect("spawn_blocking to succeed")
+}
+
 #[async_trait::async_trait]
 pub trait WalletRead: Send + Sync + 'static {
     type Error;
@@ -66,7 +76,9 @@ pub trait WalletRead: Send + Sync + 'static {
     ///
     /// This will return `Ok(None)` if no block data is present in the database.
     async fn get_max_height_hash(&self) -> Result<Option<(BlockHeight, BlockHash)>, Self::Error> {
+        println!("before extrema");
         let extrema = self.block_height_extrema().await?;
+        println!("extrema {extrema:?}");
         let res = if let Some((_, max_height)) = extrema {
             self.get_block_hash(max_height)
                 .await
@@ -237,33 +249,53 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for WalletDbAs
     async fn block_height_extrema(
         &self,
     ) -> Result<Option<(BlockHeight, BlockHeight)>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::block_height_extrema(&db).map_err(SqliteClientError::from)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::block_height_extrema(&db).map_err(SqliteClientError::from)
+        })
+        .await
     }
 
     async fn get_block_hash(
         &self,
         block_height: BlockHeight,
     ) -> Result<Option<BlockHash>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::get_block_hash(&db, block_height).map_err(SqliteClientError::from)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::get_block_hash(&db, block_height).map_err(SqliteClientError::from)
+        })
+        .await
     }
 
     async fn get_tx_height(&self, txid: TxId) -> Result<Option<BlockHeight>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::get_tx_height(&db, txid).map_err(SqliteClientError::from)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::get_tx_height(&db, txid).map_err(SqliteClientError::from)
+        })
+        .await
     }
 
     async fn get_address(&self, account: AccountId) -> Result<Option<PaymentAddress>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::get_address(&db, account).map_err(SqliteClientError::from)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::get_address(&db, account).map_err(SqliteClientError::from)
+        })
+        .await
     }
 
     async fn get_extended_full_viewing_keys(
         &self,
     ) -> Result<HashMap<AccountId, ExtendedFullViewingKey>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::get_extended_full_viewing_keys(&db)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::get_extended_full_viewing_keys(&db).map_err(SqliteClientError::from)
+        })
+        .await
     }
 
     async fn is_valid_account_extfvk(
@@ -271,8 +303,13 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for WalletDbAs
         account: AccountId,
         extfvk: &ExtendedFullViewingKey,
     ) -> Result<bool, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::is_valid_account_extfvk(&db, account, extfvk)
+        let db = self.clone();
+        let extfvk = extfvk.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::is_valid_account_extfvk(&db, account, &extfvk)
+        })
+        .await
     }
 
     async fn get_balance_at(
@@ -280,24 +317,36 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for WalletDbAs
         account: AccountId,
         anchor_height: BlockHeight,
     ) -> Result<Amount, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::get_balance_at(&db, account, anchor_height)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::get_balance_at(&db, account, anchor_height)
+        })
+        .await
     }
 
     async fn get_memo(&self, id_note: Self::NoteRef) -> Result<Memo, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        match id_note {
-            NoteId::SentNoteId(id_note) => wallet::get_sent_memo(&db, id_note),
-            NoteId::ReceivedNoteId(id_note) => wallet::get_received_memo(&db, id_note),
-        }
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            match id_note {
+                NoteId::SentNoteId(id_note) => wallet::get_sent_memo(&db, id_note),
+                NoteId::ReceivedNoteId(id_note) => wallet::get_received_memo(&db, id_note),
+            }
+        })
+        .await
     }
 
     async fn get_commitment_tree(
         &self,
         block_height: BlockHeight,
     ) -> Result<Option<CommitmentTree<Node>>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::get_commitment_tree(&db, block_height)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::get_commitment_tree(&db, block_height)
+        })
+        .await
     }
 
     #[allow(clippy::type_complexity)]
@@ -305,13 +354,21 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for WalletDbAs
         &self,
         block_height: BlockHeight,
     ) -> Result<Vec<(Self::NoteRef, IncrementalWitness<Node>)>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::get_witnesses(&db, block_height)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::get_witnesses(&db, block_height)
+        })
+        .await
     }
 
     async fn get_nullifiers(&self) -> Result<Vec<(AccountId, Nullifier)>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::get_nullifiers(&db)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::get_nullifiers(&db)
+        })
+        .await
     }
 
     async fn get_spendable_notes(
@@ -319,8 +376,12 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for WalletDbAs
         account: AccountId,
         anchor_height: BlockHeight,
     ) -> Result<Vec<SpendableNote>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::transact::get_spendable_notes(&db, account, anchor_height)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::transact::get_spendable_notes(&db, account, anchor_height)
+        })
+        .await
     }
 
     async fn select_spendable_notes(
@@ -329,11 +390,16 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for WalletDbAs
         target_value: Amount,
         anchor_height: BlockHeight,
     ) -> Result<Vec<SpendableNote>, Self::Error> {
-        let db = self.inner.lock().unwrap();
-        wallet::transact::select_spendable_notes(&db, account, target_value, anchor_height)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.inner.lock().unwrap();
+            wallet::transact::select_spendable_notes(&db, account, target_value, anchor_height)
+        })
+        .await
     }
 }
 
+#[derive(Clone)]
 pub struct DataConnStmtCacheAsync<P> {
     wallet_db: WalletDbAsync<P>,
 }
@@ -361,16 +427,16 @@ impl<P: consensus::Parameters> DataConnStmtCacheAsync<P> {
             }
             Err(error) => {
                 match self.wallet_db.inner.lock().unwrap().conn.execute("ROLLBACK", []) {
-                    Ok(_) => Err(error),
-                    Err(e) =>
-                    // Panicking here is probably the right thing to do, because it
-                    // means the database is corrupt.
-                        panic!(
-                            "Rollback failed with error {} while attempting to recover from error {}; database is likely corrupt.",
-                            e,
-                            error
-                        )
-                }
+                       Ok(_) => Err(error),
+                       Err(e) =>
+                       // Panicking here is probably the right thing to do, because it
+                       // means the database is corrupt.
+                           panic!(
+                               "Rollback failed with error {} while attempting to recover from error {}; database is likely corrupt.",
+                               e,
+                               error
+                           )
+                   }
             }
         }
     }
@@ -385,28 +451,28 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for DataConnSt
     async fn block_height_extrema(
         &self,
     ) -> Result<Option<(BlockHeight, BlockHeight)>, Self::Error> {
-        self.block_height_extrema().await
+        self.wallet_db.block_height_extrema().await
     }
 
     async fn get_block_hash(
         &self,
         block_height: BlockHeight,
     ) -> Result<Option<BlockHash>, Self::Error> {
-        self.get_block_hash(block_height).await
+        self.wallet_db.get_block_hash(block_height).await
     }
 
     async fn get_tx_height(&self, txid: TxId) -> Result<Option<BlockHeight>, Self::Error> {
-        self.get_tx_height(txid).await
+        self.wallet_db.get_tx_height(txid).await
     }
 
     async fn get_address(&self, account: AccountId) -> Result<Option<PaymentAddress>, Self::Error> {
-        self.get_address(account).await
+        self.wallet_db.get_address(account).await
     }
 
     async fn get_extended_full_viewing_keys(
         &self,
     ) -> Result<HashMap<AccountId, ExtendedFullViewingKey>, Self::Error> {
-        self.get_extended_full_viewing_keys().await
+        self.wallet_db.get_extended_full_viewing_keys().await
     }
 
     async fn is_valid_account_extfvk(
@@ -414,7 +480,9 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for DataConnSt
         account: AccountId,
         extfvk: &ExtendedFullViewingKey,
     ) -> Result<bool, Self::Error> {
-        self.is_valid_account_extfvk(account, extfvk).await
+        self.wallet_db
+            .is_valid_account_extfvk(account, extfvk)
+            .await
     }
 
     async fn get_balance_at(
@@ -422,18 +490,18 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for DataConnSt
         account: AccountId,
         anchor_height: BlockHeight,
     ) -> Result<Amount, Self::Error> {
-        self.get_balance_at(account, anchor_height).await
+        self.wallet_db.get_balance_at(account, anchor_height).await
     }
 
     async fn get_memo(&self, id_note: Self::NoteRef) -> Result<Memo, Self::Error> {
-        self.get_memo(id_note).await
+        self.wallet_db.get_memo(id_note).await
     }
 
     async fn get_commitment_tree(
         &self,
         block_height: BlockHeight,
     ) -> Result<Option<CommitmentTree<Node>>, Self::Error> {
-        self.get_commitment_tree(block_height).await
+        self.wallet_db.get_commitment_tree(block_height).await
     }
 
     #[allow(clippy::type_complexity)]
@@ -441,11 +509,11 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for DataConnSt
         &self,
         block_height: BlockHeight,
     ) -> Result<Vec<(Self::NoteRef, IncrementalWitness<Node>)>, Self::Error> {
-        self.get_witnesses(block_height).await
+        self.wallet_db.get_witnesses(block_height).await
     }
 
     async fn get_nullifiers(&self) -> Result<Vec<(AccountId, Nullifier)>, Self::Error> {
-        self.get_nullifiers().await
+        self.wallet_db.get_nullifiers().await
     }
 
     async fn get_spendable_notes(
@@ -453,7 +521,9 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for DataConnSt
         account: AccountId,
         anchor_height: BlockHeight,
     ) -> Result<Vec<SpendableNote>, Self::Error> {
-        self.get_spendable_notes(account, anchor_height).await
+        self.wallet_db
+            .get_spendable_notes(account, anchor_height)
+            .await
     }
 
     async fn select_spendable_notes(
@@ -462,7 +532,8 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletRead for DataConnSt
         target_value: Amount,
         anchor_height: BlockHeight,
     ) -> Result<Vec<SpendableNote>, Self::Error> {
-        self.select_spendable_notes(account, target_value, anchor_height)
+        self.wallet_db
+            .select_spendable_notes(account, target_value, anchor_height)
             .await
     }
 }
@@ -586,7 +657,11 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletWrite for DataConnS
     }
 
     async fn rewind_to_height(&mut self, block_height: BlockHeight) -> Result<(), Self::Error> {
-        let db = self.wallet_db.inner.lock().unwrap();
-        wallet::rewind_to_height(&db, block_height)
+        let db = self.clone();
+        async_blocking(move || {
+            let db = db.wallet_db.inner.lock().unwrap();
+            wallet::rewind_to_height(&db, block_height)
+        })
+        .await
     }
 }
