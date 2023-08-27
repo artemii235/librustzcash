@@ -1,6 +1,5 @@
 use crate::error::SqliteClientError;
 use crate::wallet::ShieldedOutput;
-use crate::with_async::{async_blocking, WalletDbAsync};
 use crate::{NoteId, WalletDb};
 use ff::PrimeField;
 use rusqlite::{params, ToSql};
@@ -84,7 +83,7 @@ pub fn put_tx_meta<P, N>(
 ///
 /// Marking a note spent in this fashion does NOT imply that the
 /// spending transaction has been mined.
-pub fn mark_spent<'a, P>(
+pub fn mark_spent<P>(
     db: &MutexGuard<WalletDb<P>>,
     tx_ref: i64,
     nf: &Nullifier,
@@ -116,15 +115,15 @@ pub fn put_received_note<P, T: ShieldedOutput>(
     let nf_bytes = output.nullifier().map(|nf| nf.0.to_vec());
 
     let sql_args: &[(&str, &dyn ToSql)] = &[
-        (&":account", &account),
-        (&":diversifier", &diversifier),
-        (&":value", &value),
-        (&":rcm", &rcm),
-        (&":nf", &nf_bytes),
-        (&":memo", &memo),
-        (&":is_change", &is_change),
-        (&":tx", &tx),
-        (&":output_index", &output_index),
+        (":account", &account),
+        (":diversifier", &diversifier),
+        (":value", &value),
+        (":rcm", &rcm),
+        (":nf", &nf_bytes),
+        (":memo", &memo),
+        (":is_change", &is_change),
+        (":tx", &tx),
+        (":output_index", &output_index),
     ];
 
     // First try updating an existing received note into the database.
@@ -141,7 +140,7 @@ pub fn put_received_note<P, T: ShieldedOutput>(
                         is_change = IFNULL(:is_change, is_change)
                     WHERE tx = :tx AND output_index = :output_index",
         )?
-        .execute_named(&sql_args)?
+        .execute(sql_args)?
         == 0
     {
         // It isn't there, so insert our note into the database.
@@ -157,7 +156,7 @@ pub fn put_received_note<P, T: ShieldedOutput>(
                         is_change = IFNULL(:is_change, is_change)
                     WHERE tx = :tx AND output_index = :output_index",
             )?
-            .execute_named(&sql_args)?;
+            .execute(sql_args)?;
 
         Ok(NoteId::ReceivedNoteId(db.conn.last_insert_rowid()))
     } else {

@@ -204,11 +204,9 @@ pub trait WalletWrite: WalletRead {
 
 use crate::error::SqliteClientError;
 use crate::{wallet, NoteId, WalletDb};
-use rusqlite::{Connection, OptionalExtension, Statement, ToSql};
+use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
-use zcash_client_backend::encoding::{
-    decode_extended_full_viewing_key, decode_payment_address, encode_extended_full_viewing_key,
-};
+
 use zcash_primitives::consensus;
 
 /// A wrapper for the SQLite connection to the wallet database.
@@ -555,12 +553,12 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletWrite for DataConnS
                 block.block_height,
                 block.block_hash,
                 block.block_time,
-                &block.commitment_tree,
+                block.commitment_tree,
             )?;
 
             let mut new_witnesses = vec![];
             for tx in block.transactions {
-                let tx_row = wallet_actions::put_tx_meta(&db, &tx, block.block_height)?;
+                let tx_row = wallet_actions::put_tx_meta(&db, tx, block.block_height)?;
 
                 // Mark notes as spent and remove them from the scanning cache
                 for spend in &tx.shielded_spends {
@@ -627,7 +625,7 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletWrite for DataConnS
         // Update the database atomically, to ensure the result is internally consistent.
         self.transactionally(|up| {
             let db = up.wallet_db.inner.lock().unwrap();
-            let tx_ref = wallet_actions::put_tx_data(&db, &sent_tx.tx, Some(sent_tx.created))?;
+            let tx_ref = wallet_actions::put_tx_data(&db, sent_tx.tx, Some(sent_tx.created))?;
 
             // Mark notes as spent.
             //
