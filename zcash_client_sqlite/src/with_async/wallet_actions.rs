@@ -1,5 +1,4 @@
 use crate::error::SqliteClientError;
-use crate::wallet::ShieldedOutput;
 use crate::{NoteId, WalletDb};
 use ff::PrimeField;
 use rusqlite::{params, ToSql};
@@ -8,6 +7,7 @@ use zcash_client_backend::address::RecipientAddress;
 use zcash_client_backend::encoding::encode_payment_address;
 use zcash_client_backend::wallet::{AccountId, WalletTx};
 use zcash_client_backend::DecryptedOutput;
+use zcash_extras::ShieldedOutput;
 use zcash_primitives::block::BlockHash;
 use zcash_primitives::consensus;
 use zcash_primitives::consensus::BlockHeight;
