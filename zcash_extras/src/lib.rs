@@ -22,7 +22,7 @@ use zcash_primitives::zip32::ExtendedFullViewingKey;
 #[async_trait::async_trait]
 pub trait WalletRead: Send + Sync + 'static {
     type Error;
-    type NoteRef: Copy + Debug;
+    type NoteRef: Debug;
     type TxRef: Copy + Debug;
 
     /// Returns the minimum and maximum block heights for stored blocks.
@@ -69,9 +69,7 @@ pub trait WalletRead: Send + Sync + 'static {
     ///
     /// This will return `Ok(None)` if no block data is present in the database.
     async fn get_max_height_hash(&self) -> Result<Option<(BlockHeight, BlockHash)>, Self::Error> {
-        println!("before extrema");
         let extrema = self.block_height_extrema().await?;
-        println!("extrema {extrema:?}");
         let res = if let Some((_, max_height)) = extrema {
             self.get_block_hash(max_height)
                 .await
