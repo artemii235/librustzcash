@@ -247,7 +247,7 @@ pub fn put_tx_data<P>(
             )?
             .execute(params![
                 txid,
-                created_at,
+                created_at.,
                 u32::from(tx.expiry_height),
                 raw_tx
             ])?;
