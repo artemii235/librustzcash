@@ -1,3 +1,4 @@
+pub mod init;
 pub mod wallet_actions;
 
 use std::collections::HashMap;
@@ -425,20 +426,18 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletWrite for DataConnS
         received_tx: &ReceivedTransaction,
     ) -> Result<Self::TxRef, Self::Error> {
         self.transactionally(|up| {
-            //            let db = up.wallet_db.inner.lock().unwrap();
-            //            let tx_ref = wallet_actions::put_tx_data(&db, received_tx.tx, None)?;
-            //
-            //            for output in received_tx.outputs {
-            //                if output.outgoing {
-            //                    wallet_actions::put_sent_note(&db, output, tx_ref)?;
-            //                } else {
-            //                    wallet_actions::put_received_note(&db, output, tx_ref)?;
-            //                }
-            //            }
-            //
-            //            Ok(tx_ref)
+            let db = up.wallet_db.inner.lock().unwrap();
+            let tx_ref = wallet_actions::put_tx_data(&db, received_tx.tx, None)?;
 
-            todo!()
+            for output in received_tx.outputs {
+                if output.outgoing {
+                    wallet_actions::put_sent_note(&db, output, tx_ref)?;
+                } else {
+                    wallet_actions::put_received_note(&db, output, tx_ref)?;
+                }
+            }
+
+            Ok(tx_ref)
         })
     }
 
