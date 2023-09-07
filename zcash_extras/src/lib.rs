@@ -5,16 +5,17 @@ use zcash_client_backend::data_api::wallet::ANCHOR_OFFSET;
 use zcash_client_backend::data_api::PrunedBlock;
 use zcash_client_backend::data_api::ReceivedTransaction;
 use zcash_client_backend::data_api::SentTransaction;
-use zcash_client_backend::wallet::AccountId;
 use zcash_client_backend::wallet::SpendableNote;
+use zcash_client_backend::wallet::{AccountId, WalletShieldedOutput};
+use zcash_client_backend::DecryptedOutput;
 use zcash_primitives::block::BlockHash;
 use zcash_primitives::consensus::BlockHeight;
-use zcash_primitives::memo::Memo;
+use zcash_primitives::memo::{Memo, MemoBytes};
 use zcash_primitives::merkle_tree::CommitmentTree;
 use zcash_primitives::merkle_tree::IncrementalWitness;
-use zcash_primitives::sapling::Node;
 use zcash_primitives::sapling::Nullifier;
 use zcash_primitives::sapling::PaymentAddress;
+use zcash_primitives::sapling::{Node, Note};
 use zcash_primitives::transaction::components::Amount;
 use zcash_primitives::transaction::TxId;
 use zcash_primitives::zip32::ExtendedFullViewingKey;
@@ -191,4 +192,64 @@ pub trait WalletWrite: WalletRead {
     ///
     /// There may be restrictions on how far it is possible to rewind.
     async fn rewind_to_height(&mut self, block_height: BlockHeight) -> Result<(), Self::Error>;
+}
+
+/// This trait provides a generalization over shielded output representations.
+pub trait ShieldedOutput {
+    fn index(&self) -> usize;
+    fn account(&self) -> AccountId;
+    fn to(&self) -> &PaymentAddress;
+    fn note(&self) -> &Note;
+    fn memo(&self) -> Option<&MemoBytes>;
+    fn is_change(&self) -> Option<bool>;
+    fn nullifier(&self) -> Option<Nullifier>;
+}
+
+impl ShieldedOutput for WalletShieldedOutput<Nullifier> {
+    fn index(&self) -> usize {
+        self.index
+    }
+    fn account(&self) -> AccountId {
+        self.account
+    }
+    fn to(&self) -> &PaymentAddress {
+        &self.to
+    }
+    fn note(&self) -> &Note {
+        &self.note
+    }
+    fn memo(&self) -> Option<&MemoBytes> {
+        None
+    }
+    fn is_change(&self) -> Option<bool> {
+        Some(self.is_change)
+    }
+
+    fn nullifier(&self) -> Option<Nullifier> {
+        Some(self.nf)
+    }
+}
+
+impl ShieldedOutput for DecryptedOutput {
+    fn index(&self) -> usize {
+        self.index
+    }
+    fn account(&self) -> AccountId {
+        self.account
+    }
+    fn to(&self) -> &PaymentAddress {
+        &self.to
+    }
+    fn note(&self) -> &Note {
+        &self.note
+    }
+    fn memo(&self) -> Option<&MemoBytes> {
+        Some(&self.memo)
+    }
+    fn is_change(&self) -> Option<bool> {
+        None
+    }
+    fn nullifier(&self) -> Option<Nullifier> {
+        None
+    }
 }
