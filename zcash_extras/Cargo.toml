@@ -7,5 +7,10 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1.52"
+group = "0.8"
+ff = "0.8"
+jubjub = "0.5.1"
+protobuf = "2.20"
+rand_core = "0.5.1"
 zcash_client_backend = { version = "0.5", path = "../zcash_client_backend" }
 zcash_primitives = { version = "0.5", path = "../zcash_primitives" }
