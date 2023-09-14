@@ -609,7 +609,7 @@ mod tests {
 
     /// Create a fake CompactBlock at the given height, containing a single output paying
     /// the given address. Returns the CompactBlock and the nullifier for the new note.
-    pub(crate) fn fake_compact_block(
+    pub fn fake_compact_block(
         height: BlockHeight,
         prev_hash: BlockHash,
         extfvk: ExtendedFullViewingKey,
@@ -658,7 +658,7 @@ mod tests {
 
     /// Create a fake CompactBlock at the given height, spending a single note from the
     /// given address.
-    pub(crate) fn fake_compact_block_spending(
+    pub fn fake_compact_block_spending(
         height: BlockHeight,
         prev_hash: BlockHash,
         (nf, in_value): (Nullifier, Amount),
