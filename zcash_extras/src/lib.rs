@@ -1,3 +1,5 @@
+pub mod wallet;
+
 use std::cmp;
 use std::collections::HashMap;
 use std::fmt::Debug;

@@ -610,7 +610,7 @@ mod tests {
                 .query_row(
                     "SELECT raw FROM transactions
                     WHERE id_tx = ?",
-                    &[tx_row],
+                    [tx_row],
                     |row| row.get(0),
                 )
                 .unwrap();
@@ -623,7 +623,7 @@ mod tests {
                 .query_row(
                     "SELECT output_index FROM sent_notes
                     WHERE tx = ?",
-                    &[tx_row],
+                    [tx_row],
                     |row| row.get(0),
                 )
                 .unwrap();
