@@ -32,6 +32,8 @@
 // Catch documentation errors caused by code changes.
 #![deny(broken_intra_doc_links)]
 
+extern crate core;
+
 use std::collections::HashMap;
 use std::fmt;
 use std::path::Path;
