@@ -1,6 +1,6 @@
 use crate::address_from_extfvk;
 use crate::error::SqliteClientError;
-use crate::with_async::{async_blocking, WalletDbAsync};
+use crate::for_async::{async_blocking, WalletDbAsync};
 use rusqlite::ToSql;
 use zcash_client_backend::encoding::encode_extended_full_viewing_key;
 use zcash_primitives::block::BlockHash;

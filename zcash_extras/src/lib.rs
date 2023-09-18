@@ -258,7 +258,6 @@ impl ShieldedOutput for DecryptedOutput {
 
 use ff::PrimeField;
 use group::GroupEncoding;
-use protobuf::Message;
 use rand_core::{OsRng, RngCore};
 
 use zcash_client_backend::proto::compact_formats::{
@@ -266,7 +265,7 @@ use zcash_client_backend::proto::compact_formats::{
 };
 
 use zcash_primitives::{
-    consensus::{Network, NetworkUpgrade, Parameters},
+    consensus::Network,
     sapling::{note_encryption::sapling_note_encryption, util::generate_random_rseed},
 };
 
@@ -283,13 +282,6 @@ pub(crate) fn network() -> Network {
 #[cfg(feature = "mainnet")]
 pub(crate) fn sapling_activation_height() -> BlockHeight {
     Network::MainNetwork
-        .activation_height(NetworkUpgrade::Sapling)
-        .unwrap()
-}
-
-#[cfg(not(feature = "mainnet"))]
-pub(crate) fn sapling_activation_height() -> BlockHeight {
-    Network::TestNetwork
         .activation_height(NetworkUpgrade::Sapling)
         .unwrap()
 }
