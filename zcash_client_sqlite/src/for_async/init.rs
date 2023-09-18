@@ -9,7 +9,7 @@ use zcash_primitives::consensus::BlockHeight;
 use zcash_primitives::zip32::ExtendedFullViewingKey;
 
 pub async fn init_wallet_db<P: consensus::Parameters + 'static>(
-    wdb: WalletDbAsync<P>,
+    wdb: &WalletDbAsync<P>,
 ) -> Result<(), rusqlite::Error>
 where
     P: Clone + Send + Sync,
