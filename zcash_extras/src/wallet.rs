@@ -1,5 +1,5 @@
 //! Functions for scanning the chain and extracting relevant information.
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 use zcash_primitives::{
     consensus::{self, BranchId, NetworkUpgrade},
@@ -163,6 +163,7 @@ pub async fn create_spend_to_address<E, N, P, D, R>(
     ovk_policy: OvkPolicy,
 ) -> Result<R, E>
 where
+    N: Display,
     E: From<Error<N>>,
     P: consensus::Parameters + Clone,
     R: Copy + Debug,

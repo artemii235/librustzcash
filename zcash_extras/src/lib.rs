@@ -1,12 +1,18 @@
 pub mod wallet;
 
-use std::cmp;
+use ff::PrimeField;
+use group::GroupEncoding;
+use rand_core::{OsRng, RngCore};
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::{cmp, fmt};
 use zcash_client_backend::data_api::wallet::ANCHOR_OFFSET;
 use zcash_client_backend::data_api::PrunedBlock;
 use zcash_client_backend::data_api::ReceivedTransaction;
 use zcash_client_backend::data_api::SentTransaction;
+use zcash_client_backend::proto::compact_formats::{
+    CompactBlock, CompactOutput, CompactSpend, CompactTx,
+};
 use zcash_client_backend::wallet::SpendableNote;
 use zcash_client_backend::wallet::{AccountId, WalletShieldedOutput};
 use zcash_client_backend::DecryptedOutput;
@@ -15,12 +21,14 @@ use zcash_primitives::consensus::BlockHeight;
 use zcash_primitives::memo::{Memo, MemoBytes};
 use zcash_primitives::merkle_tree::CommitmentTree;
 use zcash_primitives::merkle_tree::IncrementalWitness;
-use zcash_primitives::sapling::Nullifier;
-use zcash_primitives::sapling::PaymentAddress;
-use zcash_primitives::sapling::{Node, Note};
+use zcash_primitives::sapling::{Node, Note, Nullifier, PaymentAddress};
 use zcash_primitives::transaction::components::Amount;
 use zcash_primitives::transaction::TxId;
 use zcash_primitives::zip32::ExtendedFullViewingKey;
+use zcash_primitives::{
+    consensus::Network,
+    sapling::{note_encryption::sapling_note_encryption, util::generate_random_rseed},
+};
 
 #[async_trait::async_trait]
 pub trait WalletRead: Send + Sync + 'static {
@@ -256,19 +264,22 @@ impl ShieldedOutput for DecryptedOutput {
     }
 }
 
-use ff::PrimeField;
-use group::GroupEncoding;
-use rand_core::{OsRng, RngCore};
+/// A newtype wrapper for sqlite primary key values for the notes
+/// table.
+#[derive(Debug, Copy, Clone)]
+pub enum NoteId {
+    SentNoteId(i64),
+    ReceivedNoteId(i64),
+}
 
-use zcash_client_backend::proto::compact_formats::{
-    CompactBlock, CompactOutput, CompactSpend, CompactTx,
-};
-
-use zcash_primitives::{
-    consensus::Network,
-    sapling::{note_encryption::sapling_note_encryption, util::generate_random_rseed},
-};
-
+impl fmt::Display for NoteId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            NoteId::SentNoteId(id) => write!(f, "Sent Note {}", id),
+            NoteId::ReceivedNoteId(id) => write!(f, "Received Note {}", id),
+        }
+    }
+}
 #[cfg(feature = "mainnet")]
 pub(crate) fn network() -> Network {
     Network::MainNetwork
