@@ -3,8 +3,6 @@ name = "zcash_extras"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 async-trait = "0.1.52"
 group = "0.8"
@@ -12,6 +10,6 @@ ff = "0.8"
 jubjub = "0.5.1"
 protobuf = "2.20"
 rand_core = "0.5.1"
-time = "0.3"
+time = { version = "0.3", features = ["wasm-bindgen"]}
 zcash_client_backend = { version = "0.5", path = "../zcash_client_backend" }
 zcash_primitives = { version = "0.5", path = "../zcash_primitives" }
