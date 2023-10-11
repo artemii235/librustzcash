@@ -29,9 +29,15 @@ proptest = { version = "0.10.1", optional = true }
 protobuf = "2.20"
 rand_core = "0.5.1"
 subtle = "2.2.3"
-time = "0.3"
 zcash_note_encryption = { version = "0.0", path = "../components/zcash_note_encryption" }
 zcash_primitives = { version = "0.5", path = "../zcash_primitives" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+time = "0.3.20"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+time = { version = "0.3.20", features = ["wasm-bindgen"]}
+
 
 [build-dependencies]
 protobuf-codegen-pure = "2.20"

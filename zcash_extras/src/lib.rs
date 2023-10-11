@@ -32,7 +32,7 @@ use zcash_primitives::{
 
 #[async_trait::async_trait]
 pub trait WalletRead: Send + Sync + 'static {
-    type Error;
+    type Error: ToString;
     type NoteRef: Debug;
     type TxRef: Copy + Debug;
 

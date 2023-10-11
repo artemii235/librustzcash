@@ -34,7 +34,7 @@ pub mod wallet;
 /// abstracted away from any particular data storage substrate.
 pub trait WalletRead {
     /// The type of errors produced by a wallet backend.
-    type Error;
+    type Error: ToString;
 
     /// Backend-specific note identifier.
     ///
