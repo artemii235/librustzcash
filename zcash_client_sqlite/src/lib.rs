@@ -67,23 +67,6 @@ pub mod error;
 pub mod for_async;
 pub mod wallet;
 
-///// A newtype wrapper for sqlite primary key values for the notes
-///// table.
-//#[derive(Debug, Copy, Clone)]
-//pub enum NoteId {
-//    SentNoteId(i64),
-//    ReceivedNoteId(i64),
-//}
-//
-//impl fmt::Display for NoteId {
-//    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//        match self {
-//            NoteId::SentNoteId(id) => write!(f, "Sent Note {}", id),
-//            NoteId::ReceivedNoteId(id) => write!(f, "Received Note {}", id),
-//        }
-//    }
-//}
-
 /// A wrapper for the SQLite connection to the wallet database.
 pub struct WalletDb<P> {
     conn: Connection,
