@@ -1,21 +1,19 @@
 use crate::error::SqliteClientError;
 use crate::{wallet, NoteId, WalletDb};
-use rusqlite::params;
 use std::sync::MutexGuard;
 use zcash_client_backend::address::RecipientAddress;
 use zcash_client_backend::wallet::{AccountId, WalletTx};
 use zcash_client_backend::DecryptedOutput;
 use zcash_extras::ShieldedOutput;
 use zcash_primitives::block::BlockHash;
-use zcash_primitives::consensus;
-use zcash_primitives::consensus::BlockHeight;
+use zcash_primitives::consensus::{BlockHeight, Parameters};
 use zcash_primitives::memo::MemoBytes;
 use zcash_primitives::merkle_tree::{CommitmentTree, IncrementalWitness};
 use zcash_primitives::sapling::{Node, Nullifier};
 use zcash_primitives::transaction::components::Amount;
 use zcash_primitives::transaction::Transaction;
 
-pub fn insert_block<P>(
+pub fn insert_block<P: Parameters>(
     db: &MutexGuard<WalletDb<P>>,
     block_height: BlockHeight,
     block_hash: BlockHash,
@@ -32,7 +30,7 @@ pub fn insert_block<P>(
     )
 }
 
-pub fn put_tx_meta<P, N>(
+pub fn put_tx_meta<P: Parameters, N>(
     db: &MutexGuard<WalletDb<P>>,
     tx: &WalletTx<N>,
     height: BlockHeight,
@@ -41,7 +39,7 @@ pub fn put_tx_meta<P, N>(
     wallet::put_tx_meta(&mut update_ops, tx, height)
 }
 
-pub fn mark_spent<P>(
+pub fn mark_spent<P: Parameters>(
     db: &MutexGuard<WalletDb<P>>,
     tx_ref: i64,
     nf: &Nullifier,
@@ -49,7 +47,7 @@ pub fn mark_spent<P>(
     wallet::mark_spent(&mut db.get_update_ops()?, tx_ref, nf)
 }
 
-pub fn put_received_note<P, T: ShieldedOutput>(
+pub fn put_received_note<P: Parameters, T: ShieldedOutput>(
     db: &MutexGuard<WalletDb<P>>,
     output: &T,
     tx_ref: i64,
@@ -58,7 +56,7 @@ pub fn put_received_note<P, T: ShieldedOutput>(
     wallet::put_received_note(&mut update_ops, output, tx_ref)
 }
 
-pub fn insert_witness<P>(
+pub fn insert_witness<P: Parameters>(
     db: &MutexGuard<WalletDb<P>>,
     note_id: i64,
     witness: &IncrementalWitness<Node>,
@@ -68,7 +66,7 @@ pub fn insert_witness<P>(
     wallet::insert_witness(&mut update_ops, note_id, witness, height)
 }
 
-pub fn prune_witnesses<P>(
+pub fn prune_witnesses<P: Parameters>(
     db: &MutexGuard<WalletDb<P>>,
     below_height: BlockHeight,
 ) -> Result<(), SqliteClientError> {
@@ -76,7 +74,7 @@ pub fn prune_witnesses<P>(
     wallet::prune_witnesses(&mut update_ops, below_height)
 }
 
-pub fn update_expired_notes<P>(
+pub fn update_expired_notes<P: Parameters>(
     db: &MutexGuard<WalletDb<P>>,
     height: BlockHeight,
 ) -> Result<(), SqliteClientError> {
@@ -84,7 +82,7 @@ pub fn update_expired_notes<P>(
     wallet::update_expired_notes(&mut update_ops, height)
 }
 
-pub fn put_tx_data<P>(
+pub fn put_tx_data<P: Parameters>(
     db: &MutexGuard<WalletDb<P>>,
     tx: &Transaction,
     created_at: Option<time::OffsetDateTime>,
@@ -93,7 +91,7 @@ pub fn put_tx_data<P>(
     wallet::put_tx_data(&mut update_ops, tx, created_at)
 }
 
-pub fn put_sent_note<P: consensus::Parameters>(
+pub fn put_sent_note<P: Parameters>(
     db: &MutexGuard<WalletDb<P>>,
     output: &DecryptedOutput,
     tx_ref: i64,
@@ -102,7 +100,7 @@ pub fn put_sent_note<P: consensus::Parameters>(
     wallet::put_sent_note(&mut update_ops, output, tx_ref)
 }
 
-pub fn insert_sent_note<P: consensus::Parameters>(
+pub fn insert_sent_note<P: Parameters>(
     db: &MutexGuard<WalletDb<P>>,
     tx_ref: i64,
     output_index: usize,

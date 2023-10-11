@@ -34,7 +34,7 @@ pub mod wallet;
 /// abstracted away from any particular data storage substrate.
 pub trait WalletRead {
     /// The type of errors produced by a wallet backend.
-    type Error: ToString;
+    type Error;
 
     /// Backend-specific note identifier.
     ///
@@ -202,7 +202,6 @@ pub struct ReceivedTransaction<'a> {
 /// The purpose of this struct is to permit atomic updates of the
 /// wallet database when transactions are created and submitted
 /// to the network.
-#[derive(Clone)]
 pub struct SentTransaction<'a> {
     pub tx: &'a Transaction,
     pub created: time::OffsetDateTime,
