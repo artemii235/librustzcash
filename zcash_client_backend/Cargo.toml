@@ -47,7 +47,13 @@ rand_core = "0.5.1"
 rand_xorshift = "0.2"
 tempfile = "3.1.0"
 zcash_client_sqlite = { version = "0.3", path = "../zcash_client_sqlite" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 zcash_proofs = { version = "0.5", path = "../zcash_proofs" }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+zcash_proofs = { version = "0.5", path = "../zcash_proofs", default-features = false, features = ["local-prover"]}
+
 
 [features]
 test-dependencies = ["proptest", "zcash_primitives/test-dependencies"]
