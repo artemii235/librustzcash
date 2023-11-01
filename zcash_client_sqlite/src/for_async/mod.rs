@@ -226,9 +226,9 @@ pub struct DataConnStmtCacheAsync<P> {
 }
 
 impl<P: consensus::Parameters> DataConnStmtCacheAsync<P> {
-    fn transactionally<F, A>(&mut self, f: F) -> Result<A, SqliteClientError>
+    fn transactionally<F, A>(self, f: F) -> Result<A, SqliteClientError>
     where
-        F: FnOnce(&mut Self) -> Result<A, SqliteClientError>,
+        F: FnOnce(&Self) -> Result<A, SqliteClientError>,
     {
         self.wallet_db
             .inner
@@ -236,7 +236,7 @@ impl<P: consensus::Parameters> DataConnStmtCacheAsync<P> {
             .unwrap()
             .conn
             .execute("BEGIN IMMEDIATE", [])?;
-        match f(self) {
+        match f(&self) {
             Ok(result) => {
                 self.wallet_db
                     .inner
@@ -368,7 +368,7 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletWrite for DataConnS
         updated_witnesses: &[(Self::NoteRef, IncrementalWitness<Node>)],
     ) -> Result<Vec<(Self::NoteRef, IncrementalWitness<Node>)>, Self::Error> {
         // database updates for each block are transactional
-        self.transactionally(|up| {
+        self.clone().transactionally(|up| {
             let db = up.wallet_db.inner.lock().unwrap();
             // Insert the block into the database.
             wallet_actions::insert_block(
@@ -425,7 +425,7 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletWrite for DataConnS
         &mut self,
         received_tx: &ReceivedTransaction,
     ) -> Result<Self::TxRef, Self::Error> {
-        self.transactionally(|up| {
+        self.clone().transactionally(|up| {
             let db = up.wallet_db.inner.lock().unwrap();
             let tx_ref = wallet_actions::put_tx_data(&db, received_tx.tx, None)?;
 
@@ -446,7 +446,7 @@ impl<P: consensus::Parameters + Send + Sync + 'static> WalletWrite for DataConnS
         sent_tx: &SentTransaction,
     ) -> Result<Self::TxRef, Self::Error> {
         // Update the database atomically, to ensure the result is internally consistent.
-        self.transactionally(|up| {
+        self.clone().transactionally(|up| {
             let db = up.wallet_db.inner.lock().unwrap();
             let tx_ref = wallet_actions::put_tx_data(&db, sent_tx.tx, Some(sent_tx.created))?;
 
